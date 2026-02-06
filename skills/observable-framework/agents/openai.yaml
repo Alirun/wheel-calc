@@ -1,0 +1,5 @@
+version: 1
+interface:
+  display_name: Observable Framework
+  short_description: Build and maintain Observable Framework projects and workflows.
+  default_prompt: Implement or debug Observable Framework pages, data loaders, components, and project configuration.
