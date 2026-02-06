@@ -15,7 +15,7 @@ import {simulateWheel} from "./components/wheel.js";
 ```js
 const marketParams = view(Inputs.form({
   startPrice: Inputs.range([500, 8000], {value: 2500, step: 50, label: "Start price (USD)"}),
-  days: Inputs.range([30, 365], {value: 180, step: 1, label: "Days to simulate"}),
+  days: Inputs.range([30, 365], {value: 30, step: 1, label: "Days to simulate"}),
   annualVol: Inputs.range([10, 200], {value: 80, step: 5, label: "Annual volatility (%)"}),
   annualDrift: Inputs.range([-100, 100], {value: 0, step: 5, label: "Annual drift (%)"}),
   seed: Inputs.range([1, 9999], {value: 42, step: 1, label: "Random seed"})
@@ -143,6 +143,95 @@ const assignments = result.trades.filter((t) => t.assigned).map((t) => ({
   )}
 </div>
 
+## Inventory & Unrealized P/L
+
+```js
+// Build inventory events from trades
+const inventoryEvents = [];
+let invQty = 0;
+let invCostBasis = null;
+for (const t of result.trades) {
+  if (t.type === "put" && t.assigned) {
+    invQty = stratParams.contracts;
+    invCostBasis = t.strike;
+    inventoryEvents.push({day: t.endDay, event: "PUT assigned", qty: invQty, costBasis: invCostBasis, spot: t.spotAtExpiration});
+  } else if (t.type === "call" && t.assigned) {
+    inventoryEvents.push({day: t.endDay, event: "CALL assigned", qty: 0, costBasis: invCostBasis, spot: t.spotAtExpiration});
+    invQty = 0;
+    invCostBasis = null;
+  }
+}
+
+const holdingDays = result.dailyState.filter((d) => d.holdingETH);
+```
+
+<div class="grid grid-cols-2">
+  <div class="card">
+    <h3>Inventory Events</h3>
+    ${inventoryEvents.length === 0
+      ? html`<p style="color:var(--theme-foreground-muted)">No assignments yet — not holding ETH</p>`
+      : html`<table style="width:100%">
+          <thead><tr><th>Day</th><th>Event</th><th>ETH Held</th><th>Cost Basis</th><th>Spot</th><th>Unrealized</th></tr></thead>
+          <tbody>${inventoryEvents.map((e) => {
+            const unrealized = e.qty > 0 ? (e.spot - e.costBasis) * e.qty : 0;
+            return html`<tr>
+              <td>${e.day}</td>
+              <td><strong>${e.event}</strong></td>
+              <td>${e.qty}</td>
+              <td>${e.costBasis !== null ? `$${e.costBasis.toFixed(0)}` : "—"}</td>
+              <td>$${e.spot.toFixed(0)}</td>
+              <td style="color:${unrealized >= 0 ? '#2ca02c' : '#d62728'};font-weight:bold">${e.qty > 0 ? `${unrealized >= 0 ? '+' : ''}$${unrealized.toFixed(2)}` : "—"}</td>
+            </tr>`;
+          })}</tbody>
+        </table>`
+    }
+  </div>
+  <div class="card">
+    <h3>Final Position</h3>
+    ${(() => {
+      const last = result.dailyState[result.dailyState.length - 1];
+      if (!last.holdingETH) return html`<p>No ETH held — fully in cash</p><p>Phase: <strong>Selling PUT</strong></p>`;
+      const lastTrade = [...result.trades].reverse().find((t) => t.type === "put" && t.assigned);
+      const cb = lastTrade ? lastTrade.strike : 0;
+      return html`
+        <p>Holding: <strong>${stratParams.contracts} ETH</strong></p>
+        <p>Cost basis: <strong>$${cb.toFixed(0)}</strong></p>
+        <p>Current spot: <strong>$${last.price.toFixed(0)}</strong></p>
+        <p>Unrealized: <span style="font-weight:bold;color:${last.unrealizedPL >= 0 ? '#2ca02c' : '#d62728'}">${last.unrealizedPL >= 0 ? '+' : ''}$${last.unrealizedPL.toFixed(2)}</span></p>
+        <p>Phase: <strong>Selling CALL</strong></p>
+      `;
+    })()}
+  </div>
+</div>
+
+<div class="card">
+  ${resize((width) =>
+    Plot.plot({
+      title: "Unrealized P/L (when holding ETH)",
+      width,
+      height: 200,
+      x: {label: "Day"},
+      y: {label: "Unrealized P/L (USD)", grid: true},
+      marks: [
+        Plot.ruleY([0]),
+        Plot.areaY(result.dailyState, {
+          x: "day",
+          y: "unrealizedPL",
+          fill: (d) => d.unrealizedPL >= 0 ? "#2ca02c" : "#d62728",
+          fillOpacity: 0.2
+        }),
+        Plot.line(result.dailyState, {
+          x: "day",
+          y: "unrealizedPL",
+          stroke: "#ff7f0e",
+          strokeWidth: 1.5,
+          tip: true
+        })
+      ]
+    })
+  )}
+</div>
+
 ## Cumulative P/L
 
 <div class="card">
@@ -190,11 +279,16 @@ const tradeRows = result.trades.map((t, i) => ({
   "#": i + 1,
   Type: t.type.toUpperCase(),
   Days: `${t.startDay}–${t.endDay}`,
-  Strike: `$${t.strike.toFixed(2)}`,
-  Premium: `$${t.premium.toFixed(2)}`,
+  "Spot Open": `$${t.spotAtOpen.toFixed(0)}`,
+  "Spot Exp": `$${t.spotAtExpiration.toFixed(0)}`,
+  Strike: `$${t.strike.toFixed(0)}`,
+  Premium: `$${t.premium.toFixed(0)}`,
   Assigned: t.assigned ? "Yes" : "No",
+  "Cost Basis": t.entryPrice !== null ? `$${t.entryPrice.toFixed(0)}` : "—",
   "P/L": `${t.pl >= 0 ? "+" : ""}$${t.pl.toFixed(2)}`
 }));
 ```
 
-${Inputs.table(tradeRows, {sort: "#", reverse: false})}
+<div style="max-width: none;">
+  ${Inputs.table(tradeRows, {sort: "#", reverse: false, layout: "auto"})}
+</div>

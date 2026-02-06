@@ -19,6 +19,9 @@ export interface TradeRecord {
   endDay: number;
   assigned: boolean;
   pl: number; // realized P/L for this trade (per-contract × contracts)
+  spotAtOpen: number; // spot price when the option was sold
+  spotAtExpiration: number; // spot price at expiration
+  entryPrice: number | null; // ETH cost basis (strike of the PUT that got assigned), null if not holding
 }
 
 export interface DailyState {
@@ -57,9 +60,11 @@ export function simulateWheel(
   let cycleStartDay = 0;
   let strike = 0;
   let premium = 0;
+  let spotAtOpen = 0;
 
   function openCycle(day: number) {
     const spot = prices[day];
+    spotAtOpen = spot;
     if (phase === "selling_put") {
       strike = spot * (1 - strikeOffsetPct);
       premium = strike * premiumPct;
@@ -93,6 +98,9 @@ export function simulateWheel(
           endDay: day,
           assigned,
           pl: tradePL,
+          spotAtOpen,
+          spotAtExpiration: price,
+          entryPrice: assigned ? strike : null,
         });
 
         cumulativePL += tradePL;
@@ -106,6 +114,7 @@ export function simulateWheel(
       } else {
         // selling_call
         const assigned = price >= strike;
+        const costBasis = entryPrice; // capture before mutation
         let tradePL: number;
 
         if (assigned) {
@@ -128,6 +137,9 @@ export function simulateWheel(
           endDay: day,
           assigned,
           pl: tradePL,
+          spotAtOpen,
+          spotAtExpiration: price,
+          entryPrice: costBasis,
         });
 
         cumulativePL += tradePL;
