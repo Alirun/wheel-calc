@@ -1,111 +1,95 @@
 ---
+title: ETH Wheel Payout Charts
 toc: false
 ---
 
-<div class="hero">
-  <h1>Wheel Calc</h1>
-  <h2>Welcome to your new app! Edit&nbsp;<code style="font-size: 90%;">src/index.md</code> to change this page.</h2>
-  <a href="https://observablehq.com/framework/getting-started">Get started<span style="display: inline-block; margin-left: 0.25rem;">↗︎</span></a>
-</div>
+# ETH Wheel Payout Charts
 
-<div class="grid grid-cols-2" style="grid-auto-rows: 504px;">
-  <div class="card">${
-    resize((width) => Plot.plot({
-      title: "Your awesomeness over time 🚀",
-      subtitle: "Up and to the right!",
-      width,
-      y: {grid: true, label: "Awesomeness"},
-      marks: [
-        Plot.ruleY([0]),
-        Plot.lineY(aapl, {x: "Date", y: "Close", tip: true})
-      ]
-    }))
-  }</div>
-  <div class="card">${
-    resize((width) => Plot.plot({
-      title: "How big are penguins, anyway? 🐧",
-      width,
-      grid: true,
-      x: {label: "Body mass (g)"},
-      y: {label: "Flipper length (mm)"},
-      color: {legend: true},
-      marks: [
-        Plot.linearRegressionY(penguins, {x: "body_mass_g", y: "flipper_length_mm", stroke: "species"}),
-        Plot.dot(penguins, {x: "body_mass_g", y: "flipper_length_mm", stroke: "species", tip: true})
-      ]
-    }))
-  }</div>
-</div>
+Short Call and Short Put payout at expiration with ETH-oriented defaults.
 
----
+```js
+const params = view(Inputs.form({
+  strike: Inputs.range([1000, 6000], {value: 3000, step: 50, label: "Strike (USD)"}),
+  callPremium: Inputs.range([5, 600], {value: 70, step: 1, label: "Call premium (USD per ETH)"}),
+  putPremium: Inputs.range([5, 600], {value: 125, step: 1, label: "Put premium (USD per ETH)"}),
+  contracts: Inputs.range([1, 20], {value: 1, step: 1, label: "Contracts (1 contract = 1 ETH)"}),
+  spanPct: Inputs.range([10, 60], {value: 30, step: 5, label: "Price range (+/- %)"})
+}));
+```
 
-## Next steps
+```js
+const strike = Number(params.strike);
+const callPremium = Number(params.callPremium);
+const putPremium = Number(params.putPremium);
+const contracts = Number(params.contracts);
+const spanPct = Number(params.spanPct);
 
-Here are some ideas of things you could try…
+const minPrice = Math.max(0, Math.floor(strike * (1 - spanPct / 100)));
+const maxPrice = Math.ceil(strike * (1 + spanPct / 100));
+const prices = d3.range(minPrice, maxPrice + 1, 10);
 
-<div class="grid grid-cols-4">
+const shortCall = prices.map((s) => ({
+  stock: s,
+  payout: (callPremium - Math.max(s - strike, 0)) * contracts
+}));
+
+const shortPut = prices.map((s) => ({
+  stock: s,
+  payout: (putPremium - Math.max(strike - s, 0)) * contracts
+}));
+
+const breakevenCall = strike + callPremium;
+const breakevenPut = Math.max(0, strike - putPremium);
+```
+
+<div class="grid grid-cols-2">
   <div class="card">
-    Chart your own data using <a href="https://observablehq.com/framework/lib/plot"><code>Plot</code></a> and <a href="https://observablehq.com/framework/files"><code>FileAttachment</code></a>. Make it responsive using <a href="https://observablehq.com/framework/javascript#resize(render)"><code>resize</code></a>.
+    <h2>Break-even (Short)</h2>
+    <p><strong>Short Call:</strong> ${breakevenCall.toFixed(2)}</p>
+    <p><strong>Short Put:</strong> ${breakevenPut.toFixed(2)}</p>
   </div>
   <div class="card">
-    Create a <a href="https://observablehq.com/framework/project-structure">new page</a> by adding a Markdown file (<code>whatever.md</code>) to the <code>src</code> folder.
-  </div>
-  <div class="card">
-    Add a drop-down menu using <a href="https://observablehq.com/framework/inputs/select"><code>Inputs.select</code></a> and use it to filter the data shown in a chart.
-  </div>
-  <div class="card">
-    Write a <a href="https://observablehq.com/framework/loaders">data loader</a> that queries a local database or API, generating a data snapshot on build.
-  </div>
-  <div class="card">
-    Import a <a href="https://observablehq.com/framework/imports">recommended library</a> from npm, such as <a href="https://observablehq.com/framework/lib/leaflet">Leaflet</a>, <a href="https://observablehq.com/framework/lib/dot">GraphViz</a>, <a href="https://observablehq.com/framework/lib/tex">TeX</a>, or <a href="https://observablehq.com/framework/lib/duckdb">DuckDB</a>.
-  </div>
-  <div class="card">
-    Ask for help, or share your work or ideas, on our <a href="https://github.com/observablehq/framework/discussions">GitHub discussions</a>.
-  </div>
-  <div class="card">
-    Visit <a href="https://github.com/observablehq/framework">Framework on GitHub</a> and give us a star. Or file an issue if you’ve found a bug!
+    <h2>Current Inputs</h2>
+    <p><strong>Strike:</strong> ${strike.toFixed(0)}</p>
+    <p><strong>Call premium:</strong> ${callPremium.toFixed(0)}</p>
+    <p><strong>Put premium:</strong> ${putPremium.toFixed(0)}</p>
+    <p><strong>Contracts:</strong> ${contracts.toFixed(0)}</p>
   </div>
 </div>
 
-<style>
-
-.hero {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  font-family: var(--sans-serif);
-  margin: 4rem 0 8rem;
-  text-wrap: balance;
-  text-align: center;
-}
-
-.hero h1 {
-  margin: 1rem 0;
-  padding: 1rem 0;
-  max-width: none;
-  font-size: 14vw;
-  font-weight: 900;
-  line-height: 1;
-  background: linear-gradient(30deg, var(--theme-foreground-focus), currentColor);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.hero h2 {
-  margin: 0;
-  max-width: 34em;
-  font-size: 20px;
-  font-style: initial;
-  font-weight: 500;
-  line-height: 1.5;
-  color: var(--theme-foreground-muted);
-}
-
-@media (min-width: 640px) {
-  .hero h1 {
-    font-size: 90px;
-  }
-}
-
-</style>
+<div class="grid grid-cols-2">
+  <div class="card">
+    ${resize((width) =>
+      Plot.plot({
+        title: "Short Call Payout (ETH)",
+        width,
+        height: 340,
+        x: {label: "ETH price at expiration (USD)"},
+        y: {label: "P/L (USD)", grid: true},
+        marks: [
+          Plot.ruleY([0]),
+          Plot.ruleX([strike], {stroke: "#777", strokeDasharray: "4,4"}),
+          Plot.ruleX([breakevenCall], {stroke: "#d62728", strokeDasharray: "4,4"}),
+          Plot.line(shortCall, {x: "stock", y: "payout", stroke: "#d62728", tip: true})
+        ]
+      })
+    )}
+  </div>
+  <div class="card">
+    ${resize((width) =>
+      Plot.plot({
+        title: "Short Put Payout (ETH)",
+        width,
+        height: 340,
+        x: {label: "ETH price at expiration (USD)"},
+        y: {label: "P/L (USD)", grid: true},
+        marks: [
+          Plot.ruleY([0]),
+          Plot.ruleX([strike], {stroke: "#777", strokeDasharray: "4,4"}),
+          Plot.ruleX([breakevenPut], {stroke: "#1f77b4", strokeDasharray: "4,4"}),
+          Plot.line(shortPut, {x: "stock", y: "payout", stroke: "#1f77b4", tip: true})
+        ]
+      })
+    )}
+  </div>
+</div>
