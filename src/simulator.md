@@ -5,11 +5,10 @@ toc: false
 
 # Wheel Strategy Simulator
 
-Generate a random ETH price series and backtest the Wheel strategy over it.
+Generate random ETH price series and Monte Carlo the Wheel strategy across many simulations.
 
 ```js
-import {generatePrices} from "./components/price-gen.js";
-import {simulateWheel} from "./components/wheel.js";
+import {runMonteCarlo, rerunSingle} from "./components/monte-carlo.js";
 ```
 
 <div class="grid grid-cols-3">
@@ -22,7 +21,7 @@ const marketParams = view(Inputs.form({
   days: Inputs.range([30, 365], {value: 30, step: 1, label: "Days to simulate"}),
   annualVol: Inputs.range([10, 200], {value: 80, step: 5, label: "Annual volatility (%)"}),
   annualDrift: Inputs.range([-100, 100], {value: 0, step: 5, label: "Annual drift (%)"}),
-  seed: Inputs.range([1, 9999], {value: 42, step: 1, label: "Random seed"})
+  numSimulations: Inputs.range([10, 2000], {value: 200, step: 10, label: "Simulations"})
 }));
 ```
 
@@ -58,15 +57,14 @@ const costParams = view(Inputs.form({
 const annualVol = marketParams.annualVol / 100;
 const impliedVol = annualVol * (1 + strategyParams.ivPremiumPct / 100);
 
-const prices = generatePrices({
+const market = {
   startPrice: marketParams.startPrice,
   days: marketParams.days,
   annualVol: annualVol,
-  annualDrift: marketParams.annualDrift / 100,
-  seed: marketParams.seed
-});
+  annualDrift: marketParams.annualDrift / 100
+};
 
-const result = simulateWheel(prices, {
+const wheelConfig = {
   targetDelta: strategyParams.targetDelta,
   impliedVol: impliedVol,
   riskFreeRate: costParams.riskFreeRate / 100,
@@ -74,59 +72,181 @@ const result = simulateWheel(prices, {
   contracts: strategyParams.contracts,
   bidAskSpreadPct: costParams.bidAskSpreadPct / 100,
   feePerTrade: costParams.feePerTrade
-});
+};
 
-const fullCycles = result.trades.filter((t) => t.type === "call" && t.assigned).length;
+const mc = runMonteCarlo(market, wheelConfig, marketParams.numSimulations);
+```
 
-// APR: annualize realized P/L relative to cash-secured capital
+## Monte Carlo Summary
+
+<div style="display:flex;flex-wrap:wrap;gap:0.75rem;">
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">Win Rate</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.winRate >= 0.5 ? '#2ca02c' : '#d62728'}">
+      ${(mc.winRate * 100).toFixed(1)}%
+    </p>
+  </div>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">Mean APR</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.meanAPR >= 0 ? '#2ca02c' : '#d62728'}">
+      ${mc.meanAPR >= 0 ? '+' : ''}${mc.meanAPR.toFixed(1)}%
+    </p>
+  </div>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">Median APR</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.medianAPR >= 0 ? '#2ca02c' : '#d62728'}">
+      ${mc.medianAPR >= 0 ? '+' : ''}${mc.medianAPR.toFixed(1)}%
+    </p>
+  </div>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">Mean P/L</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.meanPL >= 0 ? '#2ca02c' : '#d62728'}">
+      ${mc.meanPL >= 0 ? '+' : ''}$${mc.meanPL.toFixed(2)}
+    </p>
+  </div>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">Mean Max Drawdown</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:#d62728">
+      -$${mc.meanMaxDrawdown.toFixed(2)}
+    </p>
+  </div>
+</div>
+
+## Outcome Distribution
+
+```js
+const winRuns = mc.runs.filter((r) => r.isWin);
+const loseRuns = mc.runs.filter((r) => !r.isWin);
+```
+
+<div class="grid grid-cols-2">
+  <div class="card">
+    ${resize((width) =>
+      Plot.plot({
+        title: "APR Distribution",
+        width,
+        height: 260,
+        x: {label: "APR (%)", grid: true},
+        y: {label: "Count"},
+        marks: [
+          Plot.rectY(winRuns, Plot.binX({y: "count"}, {x: "apr", fill: "#2ca02c", fillOpacity: 0.7})),
+          Plot.rectY(loseRuns, Plot.binX({y: "count"}, {x: "apr", fill: "#d62728", fillOpacity: 0.7})),
+          Plot.ruleX([0], {stroke: "#333", strokeDasharray: "4,4"})
+        ]
+      })
+    )}
+  </div>
+  <div class="card">
+    ${resize((width) =>
+      Plot.plot({
+        title: "Total P/L Distribution",
+        width,
+        height: 260,
+        x: {label: "Total P/L (USD)", grid: true},
+        y: {label: "Count"},
+        marks: [
+          Plot.rectY(winRuns, Plot.binX({y: "count"}, {x: "totalPL", fill: "#2ca02c", fillOpacity: 0.7})),
+          Plot.rectY(loseRuns, Plot.binX({y: "count"}, {x: "totalPL", fill: "#d62728", fillOpacity: 0.7})),
+          Plot.ruleX([0], {stroke: "#333", strokeDasharray: "4,4"})
+        ]
+      })
+    )}
+  </div>
+</div>
+
+## Simulation Runs
+
+```js
+const runsTable = mc.runs.map((r) => ({
+  Seed: r.seed,
+  "Total P/L": r.totalPL,
+  "APR (%)": r.apr,
+  Premiums: r.premiumCollected,
+  Assignments: r.assignments,
+  Cycles: r.fullCycles,
+  "Max DD": -r.maxDrawdown,
+  Win: r.isWin ? "Yes" : "No"
+}));
+```
+
+<div style="max-width: none;">
+  ${Inputs.table(runsTable, {
+    sort: "Seed",
+    reverse: false,
+    layout: "auto",
+    format: {
+      "Total P/L": (d) => `${d >= 0 ? "+" : ""}$${d.toFixed(2)}`,
+      "APR (%)": (d) => `${d >= 0 ? "+" : ""}${d.toFixed(1)}%`,
+      Premiums: (d) => `$${d.toFixed(2)}`,
+      "Max DD": (d) => `$${d.toFixed(2)}`
+    }
+  })}
+</div>
+
+```js
+const detailSeed = view(Inputs.range([1, marketParams.numSimulations], {
+  value: 1,
+  step: 1,
+  label: "Select seed for detail view",
+  width: 480
+}));
+```
+
+```js
+const selected = rerunSingle(market, wheelConfig, detailSeed);
+const selectedPrices = selected.prices;
+const selectedResult = selected.result;
+
+const selectedFullCycles = selectedResult.trades.filter((t) => t.type === "call" && t.assigned).length;
 const capitalAtRisk = marketParams.startPrice * strategyParams.contracts;
 const yearsElapsed = marketParams.days / 365;
-const apr = yearsElapsed > 0 ? (result.totalRealizedPL / capitalAtRisk) / yearsElapsed * 100 : 0;
+const selectedAPR = yearsElapsed > 0 ? (selectedResult.totalRealizedPL / capitalAtRisk) / yearsElapsed * 100 : 0;
 ```
+
+## Run Detail: Seed ${detailSeed}
 
 <div style="display:flex;flex-wrap:wrap;gap:0.75rem;">
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
     <h3 style="margin:0;font-size:0.75rem;">Realized P/L</h3>
-    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${result.totalRealizedPL >= 0 ? '#2ca02c' : '#d62728'}">
-      ${result.totalRealizedPL >= 0 ? '+' : ''}$${result.totalRealizedPL.toFixed(2)}
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${selectedResult.totalRealizedPL >= 0 ? '#2ca02c' : '#d62728'}">
+      ${selectedResult.totalRealizedPL >= 0 ? '+' : ''}$${selectedResult.totalRealizedPL.toFixed(2)}
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
     <h3 style="margin:0;font-size:0.75rem;">APR</h3>
-    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${apr >= 0 ? '#2ca02c' : '#d62728'}">
-      ${apr >= 0 ? '+' : ''}${apr.toFixed(1)}%
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${selectedAPR >= 0 ? '#2ca02c' : '#d62728'}">
+      ${selectedAPR >= 0 ? '+' : ''}${selectedAPR.toFixed(1)}%
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
     <h3 style="margin:0;font-size:0.75rem;">Premiums Collected</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:#2ca02c">
-      +$${result.totalPremiumCollected.toFixed(2)}
+      +$${selectedResult.totalPremiumCollected.toFixed(2)}
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
     <h3 style="margin:0;font-size:0.75rem;">Assignments</h3>
-    <p style="margin:0;font-size:1.25rem;font-weight:bold">${result.totalAssignments}</p>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold">${selectedResult.totalAssignments}</p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
     <h3 style="margin:0;font-size:0.75rem;">Full Cycles</h3>
-    <p style="margin:0;font-size:1.25rem;font-weight:bold">${fullCycles}</p>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold">${selectedFullCycles}</p>
   </div>
 </div>
 
-## Price & Position
+### Price & Position
 
 ```js
-// Build cycle bands for the chart
-const cycleBands = result.trades.map((t) => ({
+const cycleBands = selectedResult.trades.map((t) => ({
   x1: t.startDay,
   x2: t.endDay,
   type: t.type,
   strike: t.strike
 }));
 
-const assignments = result.trades.filter((t) => t.assigned).map((t) => ({
+const assignments = selectedResult.trades.filter((t) => t.assigned).map((t) => ({
   day: t.endDay,
-  price: prices[t.endDay],
+  price: selectedPrices[t.endDay],
   type: t.type
 }));
 ```
@@ -141,17 +261,15 @@ const assignments = result.trades.filter((t) => t.assigned).map((t) => ({
       y: {label: "Price (USD)", grid: true},
       color: {legend: true},
       marks: [
-        // Cycle background bands
         ...cycleBands.map((b) =>
           Plot.rectY([b], {
             x1: "x1",
             x2: "x2",
-            y1: () => Math.min(...prices) * 0.95,
-            y2: () => Math.max(...prices) * 1.05,
+            y1: () => Math.min(...selectedPrices) * 0.95,
+            y2: () => Math.max(...selectedPrices) * 1.05,
             fill: b.type === "put" ? "#d6272810" : "#1f77b410"
           })
         ),
-        // Strike lines per cycle
         ...cycleBands.map((b) =>
           Plot.ruleY([b.strike], {
             x1: b.x1,
@@ -161,15 +279,13 @@ const assignments = result.trades.filter((t) => t.assigned).map((t) => ({
             strokeOpacity: 0.5
           })
         ),
-        // Price line
-        Plot.line(prices.map((p, i) => ({day: i, price: p})), {
+        Plot.line(selectedPrices.map((p, i) => ({day: i, price: p})), {
           x: "day",
           y: "price",
           stroke: "#333",
           strokeWidth: 1.5,
           tip: true
         }),
-        // Assignment markers
         Plot.dot(assignments, {
           x: "day",
           y: "price",
@@ -184,14 +300,13 @@ const assignments = result.trades.filter((t) => t.assigned).map((t) => ({
   )}
 </div>
 
-## Inventory & Unrealized P/L
+### Inventory & Unrealized P/L
 
 ```js
-// Build inventory events from trades
 const inventoryEvents = [];
 let invQty = 0;
 let invCostBasis = null;
-for (const t of result.trades) {
+for (const t of selectedResult.trades) {
   if (t.type === "put" && t.assigned) {
     invQty = strategyParams.contracts;
     invCostBasis = t.strike;
@@ -202,8 +317,6 @@ for (const t of result.trades) {
     invCostBasis = null;
   }
 }
-
-const holdingDays = result.dailyState.filter((d) => d.holdingETH);
 ```
 
 <div class="grid grid-cols-2">
@@ -230,9 +343,9 @@ const holdingDays = result.dailyState.filter((d) => d.holdingETH);
   <div class="card">
     <h3>Final Position</h3>
     ${(() => {
-      const last = result.dailyState[result.dailyState.length - 1];
+      const last = selectedResult.dailyState[selectedResult.dailyState.length - 1];
       if (!last.holdingETH) return html`<p>No ETH held — fully in cash</p><p>Phase: <strong>Selling PUT</strong></p>`;
-      const lastTrade = [...result.trades].reverse().find((t) => t.type === "put" && t.assigned);
+      const lastTrade = [...selectedResult.trades].reverse().find((t) => t.type === "put" && t.assigned);
       const cb = lastTrade ? lastTrade.strike : 0;
       return html`
         <p>Holding: <strong>${strategyParams.contracts} ETH</strong></p>
@@ -255,13 +368,13 @@ const holdingDays = result.dailyState.filter((d) => d.holdingETH);
       y: {label: "Unrealized P/L (USD)", grid: true},
       marks: [
         Plot.ruleY([0]),
-        Plot.areaY(result.dailyState, {
+        Plot.areaY(selectedResult.dailyState, {
           x: "day",
           y: "unrealizedPL",
           fill: (d) => d.unrealizedPL >= 0 ? "#2ca02c" : "#d62728",
           fillOpacity: 0.2
         }),
-        Plot.line(result.dailyState, {
+        Plot.line(selectedResult.dailyState, {
           x: "day",
           y: "unrealizedPL",
           stroke: "#ff7f0e",
@@ -273,7 +386,7 @@ const holdingDays = result.dailyState.filter((d) => d.holdingETH);
   )}
 </div>
 
-## Cumulative P/L
+### Cumulative P/L
 
 <div class="card">
   ${resize((width) =>
@@ -285,20 +398,20 @@ const holdingDays = result.dailyState.filter((d) => d.holdingETH);
       y: {label: "P/L (USD)", grid: true},
       marks: [
         Plot.ruleY([0]),
-        Plot.areaY(result.dailyState, {
+        Plot.areaY(selectedResult.dailyState, {
           x: "day",
           y: "cumulativePL",
           fill: "#2ca02c",
           fillOpacity: 0.15
         }),
-        Plot.line(result.dailyState, {
+        Plot.line(selectedResult.dailyState, {
           x: "day",
           y: "cumulativePL",
           stroke: "#2ca02c",
           strokeWidth: 2,
           tip: true
         }),
-        Plot.line(result.dailyState, {
+        Plot.line(selectedResult.dailyState, {
           x: "day",
           y: (d) => d.cumulativePL + d.unrealizedPL,
           stroke: "#ff7f0e",
@@ -313,10 +426,10 @@ const holdingDays = result.dailyState.filter((d) => d.holdingETH);
 
 <p><small><span style="color:#2ca02c">&#9644;</span> Realized P/L &nbsp; <span style="color:#ff7f0e">- - -</span> Realized + Unrealized</small></p>
 
-## Trade Log
+### Trade Log
 
 ```js
-const tradeRows = result.trades.map((t, i) => ({
+const tradeRows = selectedResult.trades.map((t, i) => ({
   "#": i + 1,
   Type: t.type.toUpperCase(),
   Days: `${t.startDay}–${t.endDay}`,
