@@ -12,6 +12,10 @@ import {generatePrices} from "./components/price-gen.js";
 import {simulateWheel} from "./components/wheel.js";
 ```
 
+<div class="grid grid-cols-3">
+  <div class="card">
+    <h3>Market</h3>
+
 ```js
 const marketParams = view(Inputs.form({
   startPrice: Inputs.range([500, 8000], {value: 2500, step: 50, label: "Start price (USD)"}),
@@ -22,53 +26,90 @@ const marketParams = view(Inputs.form({
 }));
 ```
 
+  </div>
+  <div class="card">
+    <h3>Strategy</h3>
+
 ```js
-const stratParams = view(Inputs.form({
-  strikeOffsetPct: Inputs.range([1, 20], {value: 5, step: 1, label: "Strike offset (% OTM)"}),
-  premiumPct: Inputs.range([0.5, 10], {value: 3, step: 0.5, label: "Premium (% of strike)"}),
+const strategyParams = view(Inputs.form({
+  targetDelta: Inputs.range([0.05, 0.50], {value: 0.30, step: 0.01, label: "Target delta"}),
+  ivPremiumPct: Inputs.range([0, 50], {value: 15, step: 1, label: "IV premium over RV (%)"}),
+  cycleLengthDays: Inputs.range([1, 30], {value: 7, step: 1, label: "Cycle length (days)"}),
   contracts: Inputs.range([1, 20], {value: 1, step: 1, label: "Contracts (1 = 1 ETH)"})
 }));
 ```
 
+  </div>
+  <div class="card">
+    <h3>Costs</h3>
+
 ```js
+const costParams = view(Inputs.form({
+  riskFreeRate: Inputs.range([0, 10], {value: 5, step: 0.5, label: "Risk-free rate (%)"}),
+  bidAskSpreadPct: Inputs.range([0, 20], {value: 5, step: 1, label: "Bid-ask spread (%)"}),
+  feePerTrade: Inputs.range([0, 10], {value: 0.50, step: 0.10, label: "Fee per trade (USD)"})
+}));
+```
+
+  </div>
+</div>
+
+```js
+const annualVol = marketParams.annualVol / 100;
+const impliedVol = annualVol * (1 + strategyParams.ivPremiumPct / 100);
+
 const prices = generatePrices({
   startPrice: marketParams.startPrice,
   days: marketParams.days,
-  annualVol: marketParams.annualVol / 100,
+  annualVol: annualVol,
   annualDrift: marketParams.annualDrift / 100,
   seed: marketParams.seed
 });
 
 const result = simulateWheel(prices, {
-  strikeOffsetPct: stratParams.strikeOffsetPct / 100,
-  premiumPct: stratParams.premiumPct / 100,
-  cycleLengthDays: 7,
-  contracts: stratParams.contracts
+  targetDelta: strategyParams.targetDelta,
+  impliedVol: impliedVol,
+  riskFreeRate: costParams.riskFreeRate / 100,
+  cycleLengthDays: strategyParams.cycleLengthDays,
+  contracts: strategyParams.contracts,
+  bidAskSpreadPct: costParams.bidAskSpreadPct / 100,
+  feePerTrade: costParams.feePerTrade
 });
 
 const fullCycles = result.trades.filter((t) => t.type === "call" && t.assigned).length;
+
+// APR: annualize realized P/L relative to cash-secured capital
+const capitalAtRisk = marketParams.startPrice * strategyParams.contracts;
+const yearsElapsed = marketParams.days / 365;
+const apr = yearsElapsed > 0 ? (result.totalRealizedPL / capitalAtRisk) / yearsElapsed * 100 : 0;
 ```
 
-<div class="grid grid-cols-4">
-  <div class="card">
-    <h3>Realized P/L</h3>
-    <p style="font-size:1.5rem;font-weight:bold;color:${result.totalRealizedPL >= 0 ? '#2ca02c' : '#d62728'}">
+<div style="display:flex;flex-wrap:wrap;gap:0.75rem;">
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">Realized P/L</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${result.totalRealizedPL >= 0 ? '#2ca02c' : '#d62728'}">
       ${result.totalRealizedPL >= 0 ? '+' : ''}$${result.totalRealizedPL.toFixed(2)}
     </p>
   </div>
-  <div class="card">
-    <h3>Premiums Collected</h3>
-    <p style="font-size:1.5rem;font-weight:bold;color:#2ca02c">
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">APR</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${apr >= 0 ? '#2ca02c' : '#d62728'}">
+      ${apr >= 0 ? '+' : ''}${apr.toFixed(1)}%
+    </p>
+  </div>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">Premiums Collected</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:#2ca02c">
       +$${result.totalPremiumCollected.toFixed(2)}
     </p>
   </div>
-  <div class="card">
-    <h3>Assignments</h3>
-    <p style="font-size:1.5rem;font-weight:bold">${result.totalAssignments}</p>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">Assignments</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold">${result.totalAssignments}</p>
   </div>
-  <div class="card">
-    <h3>Full Cycles</h3>
-    <p style="font-size:1.5rem;font-weight:bold">${fullCycles}</p>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">Full Cycles</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold">${fullCycles}</p>
   </div>
 </div>
 
@@ -152,7 +193,7 @@ let invQty = 0;
 let invCostBasis = null;
 for (const t of result.trades) {
   if (t.type === "put" && t.assigned) {
-    invQty = stratParams.contracts;
+    invQty = strategyParams.contracts;
     invCostBasis = t.strike;
     inventoryEvents.push({day: t.endDay, event: "PUT assigned", qty: invQty, costBasis: invCostBasis, spot: t.spotAtExpiration});
   } else if (t.type === "call" && t.assigned) {
@@ -194,7 +235,7 @@ const holdingDays = result.dailyState.filter((d) => d.holdingETH);
       const lastTrade = [...result.trades].reverse().find((t) => t.type === "put" && t.assigned);
       const cb = lastTrade ? lastTrade.strike : 0;
       return html`
-        <p>Holding: <strong>${stratParams.contracts} ETH</strong></p>
+        <p>Holding: <strong>${strategyParams.contracts} ETH</strong></p>
         <p>Cost basis: <strong>$${cb.toFixed(0)}</strong></p>
         <p>Current spot: <strong>$${last.price.toFixed(0)}</strong></p>
         <p>Unrealized: <span style="font-weight:bold;color:${last.unrealizedPL >= 0 ? '#2ca02c' : '#d62728'}">${last.unrealizedPL >= 0 ? '+' : ''}$${last.unrealizedPL.toFixed(2)}</span></p>
@@ -282,7 +323,9 @@ const tradeRows = result.trades.map((t, i) => ({
   "Spot Open": `$${t.spotAtOpen.toFixed(0)}`,
   "Spot Exp": `$${t.spotAtExpiration.toFixed(0)}`,
   Strike: `$${t.strike.toFixed(0)}`,
-  Premium: `$${t.premium.toFixed(0)}`,
+  Delta: t.delta.toFixed(2),
+  IV: `${(t.impliedVol * 100).toFixed(0)}%`,
+  Premium: `$${t.premium.toFixed(2)}`,
   Assigned: t.assigned ? "Yes" : "No",
   "Cost Basis": t.entryPrice !== null ? `$${t.entryPrice.toFixed(0)}` : "—",
   "P/L": `${t.pl >= 0 ? "+" : ""}$${t.pl.toFixed(2)}`

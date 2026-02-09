@@ -2,11 +2,22 @@
 // Pure TypeScript — no framework dependencies.
 // Designed for reuse in backtesting and live trading.
 
+import {
+  bsCallPrice,
+  bsPutPrice,
+  bsCallDelta,
+  bsPutDelta,
+  findStrikeForDelta,
+} from "./black-scholes.js";
+
 export interface WheelConfig {
-  strikeOffsetPct: number; // e.g. 0.05 = 5% OTM
-  premiumPct: number; // e.g. 0.03 = 3% of strike
+  targetDelta: number; // e.g. 0.30 = 30-delta
+  impliedVol: number; // annualized IV for pricing (e.g. 0.92 = 92%)
+  riskFreeRate: number; // e.g. 0.05 = 5%
   cycleLengthDays: number; // e.g. 7
   contracts: number; // ETH per contract
+  bidAskSpreadPct: number; // e.g. 0.05 = 5% haircut on premium
+  feePerTrade: number; // USD per contract per trade
 }
 
 export type Phase = "selling_put" | "selling_call";
@@ -22,6 +33,8 @@ export interface TradeRecord {
   spotAtOpen: number; // spot price when the option was sold
   spotAtExpiration: number; // spot price at expiration
   entryPrice: number | null; // ETH cost basis (strike of the PUT that got assigned), null if not holding
+  impliedVol: number; // IV used for this trade
+  delta: number; // delta of the option at open
 }
 
 export interface DailyState {
@@ -45,7 +58,15 @@ export function simulateWheel(
   prices: number[],
   config: WheelConfig
 ): SimulationResult {
-  const { strikeOffsetPct, premiumPct, cycleLengthDays, contracts } = config;
+  const {
+    targetDelta,
+    impliedVol,
+    riskFreeRate,
+    cycleLengthDays,
+    contracts,
+    bidAskSpreadPct,
+    feePerTrade,
+  } = config;
 
   const trades: TradeRecord[] = [];
   const dailyState: DailyState[] = [];
@@ -61,17 +82,29 @@ export function simulateWheel(
   let strike = 0;
   let premium = 0;
   let spotAtOpen = 0;
+  let cycleDelta = 0;
+
+  const T = cycleLengthDays / 365;
 
   function openCycle(day: number) {
     const spot = prices[day];
     spotAtOpen = spot;
-    if (phase === "selling_put") {
-      strike = spot * (1 - strikeOffsetPct);
-      premium = strike * premiumPct;
-    } else {
-      strike = spot * (1 + strikeOffsetPct);
-      premium = strike * premiumPct;
-    }
+    const optionType = phase === "selling_put" ? "put" : "call";
+
+    strike = findStrikeForDelta(targetDelta, spot, T, riskFreeRate, impliedVol, optionType);
+
+    const rawPremium =
+      optionType === "put"
+        ? bsPutPrice(spot, strike, T, riskFreeRate, impliedVol)
+        : bsCallPrice(spot, strike, T, riskFreeRate, impliedVol);
+
+    premium = rawPremium * (1 - bidAskSpreadPct);
+
+    cycleDelta =
+      optionType === "put"
+        ? bsPutDelta(spot, strike, T, riskFreeRate, impliedVol)
+        : bsCallDelta(spot, strike, T, riskFreeRate, impliedVol);
+
     cycleStartDay = day;
   }
 
@@ -84,11 +117,13 @@ export function simulateWheel(
 
     // Check expiration
     if (daysSinceCycleStart >= cycleLengthDays && day > 0) {
+      const fees = feePerTrade * contracts;
+
       if (phase === "selling_put") {
         const assigned = price < strike;
         const tradePL = assigned
-          ? (premium - (strike - price)) * contracts
-          : premium * contracts;
+          ? (premium - (strike - price)) * contracts - fees
+          : premium * contracts - fees;
 
         trades.push({
           type: "put",
@@ -101,6 +136,8 @@ export function simulateWheel(
           spotAtOpen,
           spotAtExpiration: price,
           entryPrice: assigned ? strike : null,
+          impliedVol,
+          delta: cycleDelta,
         });
 
         cumulativePL += tradePL;
@@ -120,13 +157,13 @@ export function simulateWheel(
         if (assigned) {
           // Sell ETH at strike, realize gain/loss on ETH + premium
           tradePL =
-            (premium + (strike - (entryPrice as number))) * contracts;
+            (premium + (strike - (entryPrice as number))) * contracts - fees;
           entryPrice = null;
           phase = "selling_put";
           totalAssignments++;
         } else {
           // Keep premium, still hold ETH
-          tradePL = premium * contracts;
+          tradePL = premium * contracts - fees;
         }
 
         trades.push({
@@ -140,6 +177,8 @@ export function simulateWheel(
           spotAtOpen,
           spotAtExpiration: price,
           entryPrice: costBasis,
+          impliedVol,
+          delta: cycleDelta,
         });
 
         cumulativePL += tradePL;
