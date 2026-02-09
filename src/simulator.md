@@ -471,22 +471,97 @@ for (const t of selectedResult.trades) {
 ### Trade Log
 
 ```js
-const tradeRows = selectedResult.trades.map((t, i) => ({
-  "#": i + 1,
-  Type: t.type.toUpperCase(),
-  Days: `${t.startDay}–${t.endDay}`,
-  "Spot Open": `$${t.spotAtOpen.toFixed(0)}`,
-  "Spot Exp": `$${t.spotAtExpiration.toFixed(0)}`,
-  Strike: `$${t.strike.toFixed(0)}`,
-  Delta: t.delta.toFixed(2),
-  IV: `${(t.impliedVol * 100).toFixed(0)}%`,
-  Premium: `$${t.premium.toFixed(2)}`,
-  Assigned: t.assigned ? "Yes" : "No",
-  "Cost Basis": t.entryPrice !== null ? `$${t.entryPrice.toFixed(0)}` : "—",
-  "P/L": `${t.pl >= 0 ? "+" : ""}$${t.pl.toFixed(2)}`
-}));
+const tradeRows = [];
+let rowNum = 0;
+let runningPL = 0;
+let costBasis = null;
+const feePerContract = costParams.feePerTrade * strategyParams.contracts;
+for (const t of selectedResult.trades) {
+  // 1. Option sale event
+  rowNum++;
+  const optionPL = t.premium * strategyParams.contracts - feePerContract;
+  runningPL += optionPL;
+  tradeRows.push({
+    "#": rowNum,
+    Day: t.startDay,
+    Event: `SELL ${t.type.toUpperCase()}`,
+    Strike: t.strike,
+    Spot: t.spotAtOpen,
+    "Entry": costBasis,
+    Delta: Math.abs(t.delta),
+    IV: t.impliedVol,
+    Premium: t.premium,
+    "dPNL": optionPL,
+    "Total PNL": runningPL
+  });
+
+  // 2. Expiration / assignment event
+  rowNum++;
+  if (!t.assigned) {
+    tradeRows.push({
+      "#": rowNum,
+      Day: t.endDay,
+      Event: `${t.type.toUpperCase()} EXPIRED`,
+      Strike: null,
+      Spot: t.spotAtExpiration,
+      "Entry": costBasis,
+      Delta: null,
+      IV: null,
+      Premium: null,
+      "dPNL": null,
+      "Total PNL": runningPL
+    });
+  } else if (t.type === "put") {
+    costBasis = t.strike;
+    tradeRows.push({
+      "#": rowNum,
+      Day: t.endDay,
+      Event: "BUY ETH",
+      Strike: t.strike,
+      Spot: t.spotAtExpiration,
+      "Entry": costBasis,
+      Delta: null,
+      IV: null,
+      Premium: null,
+      "dPNL": null,
+      "Total PNL": runningPL
+    });
+  } else {
+    // call assigned → sell ETH
+    const ethPL = (t.strike - (t.entryPrice ?? 0)) * strategyParams.contracts;
+    runningPL += ethPL;
+    tradeRows.push({
+      "#": rowNum,
+      Day: t.endDay,
+      Event: "SELL ETH",
+      Strike: t.strike,
+      Spot: t.spotAtExpiration,
+      "Entry": costBasis,
+      Delta: null,
+      IV: null,
+      Premium: null,
+      "dPNL": ethPL,
+      "Total PNL": runningPL
+    });
+    costBasis = null;
+  }
+}
 ```
 
 <div style="max-width: none;">
-  ${Inputs.table(tradeRows, {sort: "#", reverse: false, layout: "auto"})}
+  ${Inputs.table(tradeRows, {
+    sort: "#",
+    reverse: false,
+    layout: "auto",
+    format: {
+      Strike: (d) => d != null ? `$${d.toFixed(0)}` : "—",
+      Spot: (d) => `$${d.toFixed(0)}`,
+      "Entry": (d) => d != null ? `$${d.toFixed(0)}` : "—",
+      Delta: (d) => d != null ? d.toFixed(2) : "—",
+      IV: (d) => d != null ? `${(d * 100).toFixed(0)}%` : "—",
+      Premium: (d) => d != null ? `$${d.toFixed(2)}` : "—",
+      "dPNL": (d) => d != null ? `${d >= 0 ? "+" : ""}$${d.toFixed(2)}` : "—",
+      "Total PNL": (d) => `${d >= 0 ? "+" : ""}$${d.toFixed(2)}`
+    }
+  })}
 </div>

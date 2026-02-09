@@ -157,9 +157,7 @@ export function simulateWheel(
 
       if (phase === "selling_put") {
         const assigned = price < strike;
-        const tradePL = assigned
-          ? (premium - (strike - price)) * contracts - fees
-          : premium * contracts - fees;
+        const tradePL = premium * contracts - fees;
 
         trades.push({
           type: "put",
