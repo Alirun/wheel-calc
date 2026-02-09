@@ -23,6 +23,7 @@ export interface RunSummary {
   fullCycles: number;
   apr: number;
   maxDrawdown: number;
+  skippedCycles: number;
   isWin: boolean;
 }
 
@@ -102,6 +103,7 @@ export function runMonteCarlo(
       fullCycles,
       apr,
       maxDrawdown,
+      skippedCycles: result.totalSkippedCycles,
       isWin: totalPL > 0,
     });
   }

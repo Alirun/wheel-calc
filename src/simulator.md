@@ -25,22 +25,8 @@ const marketParams = view(Inputs.form({
 }));
 ```
 
-  </div>
-  <div class="card">
-    <h3>Strategy</h3>
-
-```js
-const strategyParams = view(Inputs.form({
-  targetDelta: Inputs.range([0.05, 0.50], {value: 0.30, step: 0.01, label: "Target delta"}),
-  ivPremiumPct: Inputs.range([0, 50], {value: 15, step: 1, label: "IV premium over RV (%)"}),
-  cycleLengthDays: Inputs.range([1, 30], {value: 7, step: 1, label: "Cycle length (days)"}),
-  contracts: Inputs.range([1, 20], {value: 1, step: 1, label: "Contracts (1 = 1 ETH)"})
-}));
-```
-
-  </div>
-  <div class="card">
-    <h3>Costs</h3>
+<hr style="margin:0.5rem 0;border:0;border-top:1px solid var(--theme-foreground-faintest)">
+<h3 style="margin-top:0.5rem">Costs</h3>
 
 ```js
 const costParams = view(Inputs.form({
@@ -49,6 +35,50 @@ const costParams = view(Inputs.form({
   feePerTrade: Inputs.range([0, 10], {value: 0.50, step: 0.10, label: "Fee per trade (USD)"})
 }));
 ```
+
+  </div>
+  <div class="card">
+    <h3>Strategy</h3>
+
+```js
+const strategyParams = view(Inputs.form({
+  targetDelta: Inputs.range([0.05, 0.50], {value: 0.30, step: 0.01, label: "Target delta (puts)"}),
+  ivPremiumPct: Inputs.range([0, 50], {value: 15, step: 1, label: "IV premium over RV (%)"}),
+  cycleLengthDays: Inputs.range([1, 30], {value: 7, step: 1, label: "Cycle length (days)"}),
+  contracts: Inputs.range([1, 20], {value: 1, step: 1, label: "Contracts (1 = 1 ETH)"}),
+  adaptiveCalls: Inputs.toggle({label: "Adaptive call delta", value: true}),
+  minCallDelta: Inputs.range([0.05, 0.40], {value: 0.10, step: 0.01, label: "Min call delta (underwater)"}),
+  maxCallDelta: Inputs.range([0.20, 0.70], {value: 0.50, step: 0.01, label: "Max call delta (profitable)"}),
+  skipThresholdPct: Inputs.range([0, 2], {value: 0.1, step: 0.05, label: "Skip threshold (%)"})
+}));
+```
+
+  </div>
+  <div class="card" style="min-height:420px">
+    <h3>Strategy Rules</h3>
+
+```js
+const rulesHtml = html`<ol style="margin:0;padding-left:1.2rem;line-height:1.7;font-size:0.85rem">
+  <li><strong>Sell PUT</strong> at <code>${strategyParams.targetDelta.toFixed(2)}</code>Δ, <code>${strategyParams.cycleLengthDays}</code>d expiry, IV = <code>${(impliedVol * 100).toFixed(0)}%</code></li>
+  <li>PUT expires OTM (spot &ge; strike) &rarr; collect premium, go to 1</li>
+  <li>PUT assigned (spot &lt; strike) &rarr; buy ETH at strike. Sell CALLs.</li>
+  ${strategyParams.adaptiveCalls
+    ? html`<li><strong>Sell CALL</strong> &mdash; adaptive delta:
+        <ul style="margin:0.15rem 0;padding-left:1rem">
+          <li>Underwater &rarr; Δ &asymp; <code>${strategyParams.minCallDelta.toFixed(2)}</code></li>
+          <li>Breakeven &rarr; Δ &asymp; <code>${((strategyParams.minCallDelta + strategyParams.maxCallDelta) / 2).toFixed(2)}</code></li>
+          <li>Profitable &rarr; Δ &asymp; <code>${strategyParams.maxCallDelta.toFixed(2)}</code></li>
+          <li>Premium &lt; <code>${strategyParams.skipThresholdPct.toFixed(1)}%</code> of position &rarr; <strong>SKIP</strong></li>
+        </ul>
+      </li>`
+    : html`<li><strong>Sell CALL</strong> at <code>${strategyParams.targetDelta.toFixed(2)}</code>Δ, <code>${strategyParams.cycleLengthDays}</code>d expiry</li>`
+  }
+  <li>CALL expires OTM &rarr; collect premium, go to 4</li>
+  <li>CALL assigned &rarr; sell ETH at strike. Return to 1.</li>
+</ol>`;
+```
+
+${rulesHtml}
 
   </div>
 </div>
@@ -71,7 +101,14 @@ const wheelConfig = {
   cycleLengthDays: strategyParams.cycleLengthDays,
   contracts: strategyParams.contracts,
   bidAskSpreadPct: costParams.bidAskSpreadPct / 100,
-  feePerTrade: costParams.feePerTrade
+  feePerTrade: costParams.feePerTrade,
+  ...(strategyParams.adaptiveCalls ? {
+    adaptiveCalls: {
+      minDelta: strategyParams.minCallDelta,
+      maxDelta: strategyParams.maxCallDelta,
+      skipThresholdPct: strategyParams.skipThresholdPct / 100
+    }
+  } : {})
 };
 
 const mc = runMonteCarlo(market, wheelConfig, marketParams.numSimulations);
@@ -164,6 +201,7 @@ const runsTable = mc.runs.map((r) => ({
   Premiums: r.premiumCollected,
   Assignments: r.assignments,
   Cycles: r.fullCycles,
+  Skipped: r.skippedCycles,
   "Max DD": -r.maxDrawdown,
   Win: r.isWin ? "Yes" : "No"
 }));
@@ -231,6 +269,10 @@ const selectedAPR = yearsElapsed > 0 ? (selectedResult.totalRealizedPL / capital
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
     <h3 style="margin:0;font-size:0.75rem;">Full Cycles</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold">${selectedFullCycles}</p>
+  </div>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">Skipped Cycles</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold">${selectedResult.totalSkippedCycles}</p>
   </div>
 </div>
 

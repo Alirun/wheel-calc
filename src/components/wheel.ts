@@ -18,6 +18,13 @@ export interface WheelConfig {
   contracts: number; // ETH per contract
   bidAskSpreadPct: number; // e.g. 0.05 = 5% haircut on premium
   feePerTrade: number; // USD per contract per trade
+  adaptiveCalls?: AdaptiveCallsConfig;
+}
+
+export interface AdaptiveCallsConfig {
+  minDelta: number;         // min call delta when deep underwater (e.g. 0.10)
+  maxDelta: number;         // max call delta when profitable (e.g. 0.50)
+  skipThresholdPct: number; // skip if net premium < this % of position value
 }
 
 export type Phase = "selling_put" | "selling_call";
@@ -52,6 +59,7 @@ export interface SimulationResult {
   totalRealizedPL: number;
   totalPremiumCollected: number;
   totalAssignments: number;
+  totalSkippedCycles: number;
 }
 
 export function simulateWheel(
@@ -83,15 +91,30 @@ export function simulateWheel(
   let premium = 0;
   let spotAtOpen = 0;
   let cycleDelta = 0;
+  let cycleActive = true;
+  let totalSkippedCycles = 0;
 
   const T = cycleLengthDays / 365;
 
-  function openCycle(day: number) {
+  // Compute call delta: adaptive if configured, otherwise fixed targetDelta
+  function getCallDelta(spot: number): number {
+    if (config.adaptiveCalls && entryPrice !== null) {
+      const pnlPct = (spot - entryPrice) / entryPrice;
+      // Map pnlPct from [-1, +1] to [0, 1]: -100% → minDelta, 0% → midpoint, +100% → maxDelta
+      const t = Math.max(0, Math.min(1, (pnlPct + 1) / 2));
+      const {minDelta, maxDelta} = config.adaptiveCalls;
+      return minDelta + (maxDelta - minDelta) * t;
+    }
+    return targetDelta;
+  }
+
+  function openCycle(day: number): boolean {
     const spot = prices[day];
     spotAtOpen = spot;
     const optionType = phase === "selling_put" ? "put" : "call";
 
-    strike = findStrikeForDelta(targetDelta, spot, T, riskFreeRate, impliedVol, optionType);
+    const effectiveDelta = optionType === "call" ? getCallDelta(spot) : targetDelta;
+    strike = findStrikeForDelta(effectiveDelta, spot, T, riskFreeRate, impliedVol, optionType);
 
     const rawPremium =
       optionType === "put"
@@ -106,10 +129,22 @@ export function simulateWheel(
         : bsCallDelta(spot, strike, T, riskFreeRate, impliedVol);
 
     cycleStartDay = day;
+
+    // Skip if call premium too low relative to position value
+    if (optionType === "call" && config.adaptiveCalls && entryPrice !== null) {
+      const netPremium = premium * contracts - feePerTrade * contracts;
+      const positionValue = entryPrice * contracts;
+      if (netPremium < config.adaptiveCalls.skipThresholdPct * positionValue) {
+        totalSkippedCycles++;
+        return false;
+      }
+    }
+
+    return true;
   }
 
   // Open initial cycle
-  openCycle(0);
+  cycleActive = openCycle(0);
 
   for (let day = 0; day < prices.length; day++) {
     const price = prices[day];
@@ -117,6 +152,7 @@ export function simulateWheel(
 
     // Check expiration
     if (daysSinceCycleStart >= cycleLengthDays && day > 0) {
+     if (cycleActive) {
       const fees = feePerTrade * contracts;
 
       if (phase === "selling_put") {
@@ -185,8 +221,10 @@ export function simulateWheel(
         totalPremiumCollected += premium * contracts;
       }
 
-      // Open next cycle
-      openCycle(day);
+     } // cycleActive
+
+      // Open next cycle (may be skipped if call premium too low)
+      cycleActive = openCycle(day);
     }
 
     // Compute unrealized P/L (only when holding ETH)
@@ -211,5 +249,6 @@ export function simulateWheel(
     totalRealizedPL: cumulativePL,
     totalPremiumCollected,
     totalAssignments,
+    totalSkippedCycles,
   };
 }
