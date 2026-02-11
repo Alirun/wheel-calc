@@ -1,22 +1,30 @@
 # Wheel Calc
 
-Observable Framework app for visualizing options payout profiles.
+Options wheel strategy simulator for ETH with Monte Carlo analysis.
 
-## Run locally
+## Quick Start
 
 ```bash
 npm install
-npm run dev
+npm run dev       # localhost:3000
 ```
 
-Open <http://localhost:3000>.
+## Pages
 
-## Build
+| Page | What it does |
+|------|-------------|
+| **Wheel Simulator** (`/simulator`) | Configure market + strategy params, run Monte Carlo, inspect individual runs with price charts and trade logs |
+| **Payout Charts** (`/`) | Interactive short call / short put payout diagrams |
+| **Deribit Data** (`/volatility`) | Live index prices and historical volatility from Deribit API |
 
-```bash
-npm run build
-```
+## Documentation
 
-## Current page
+See [`docs/README.md`](docs/README.md) for architecture, strategy, and simulation docs.
 
-- `/` - Dynamic payout charts for long Call and long Put options at expiration.
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Dev server with hot reload |
+| `npm run build` | Production build to `dist/` |
+| `npm run clean` | Clear Observable cache |

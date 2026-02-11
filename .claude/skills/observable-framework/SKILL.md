@@ -11,6 +11,18 @@ Follow this workflow:
 2. Keep content under the configured root (`src/` in this project).
 3. Implement the smallest change that satisfies the request, then run a relevant check (`npm run build` or targeted command).
 
+## Import Convention
+
+- Imports in `.md` pages **must use `.js` extensions** (`import {foo} from "./components/bar.js"`). Observable Framework resolves `.ts` sources automatically via esbuild.
+
+## Charts & UI
+
+- Use **Observable Plot** (`Plot.plot()`) for charts, not raw D3.
+- Use `Inputs.table()` for data tables, `Inputs.form()` / `Inputs.range()` / `Inputs.select()` for controls.
+- Use `resize((width) => ...)` wrapper for responsive chart sizing.
+- Use Observable's `grid` CSS classes for layout (`class="grid grid-cols-2"`).
+- Use `view()` to make inputs reactive.
+
 ## Work on Pages
 
 - Create pages as Markdown files in `src/` (for example `src/wheel-analysis.md`).
