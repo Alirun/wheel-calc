@@ -2,8 +2,8 @@
 
 ## Overview
 
-- Purpose: Define the Wheel strategy logic — phases, configuration, trade lifecycle.
-- Source: `src/components/wheel.ts`
+- Purpose: Define the Wheel strategy logic — phases, rules, configuration, trade lifecycle.
+- Sources: `src/components/strategy/` (types, rules, strategy, executor, state, simulate)
 
 ## Text Representations
 
@@ -11,27 +11,102 @@ The algorithm has two text representations that **must stay in sync** when strat
 
 | Location | Format | What it shows |
 |----------|--------|---------------|
-| `src/simulator.md` (lines 60-78) | Reactive HTML (`rulesHtml`) | Step-by-step rules with live parameter values (delta, DTE, IV, skip threshold) |
-| `docs/strategy.md` (this file) | Markdown | Authoritative spec: phases, formulas, config, lifecycle |
+| `src/simulator.md` (rules panel) | Reactive HTML (`rulesHtml`) | Step-by-step rules with live parameter values (delta, DTE, IV, skip threshold) |
+| `docs/strategy.md` (this file) | Markdown | Authoritative spec: phases, rules, formulas, config, lifecycle |
 
 When modifying strategy logic: update both. This file is the source of truth for behavior; the simulator panel is a derived visualization.
 
-## Phases
+## State Machine
 
-Two phases, cycling between cash and ETH:
+Four phases with explicit intermediate states:
 
 ```
-selling_put ──(assigned)──→ selling_call
-     ↑                           │
-     └────(assigned)─────────────┘
+IDLE_CASH ───SELL_PUT───→ SHORT_PUT
+                              │
+                   expired OTM│assigned
+                   ┌──────────┘──────────┐
+                   ↓                     ↓
+             IDLE_CASH            HOLDING_ETH ←──────────────┐
+                                      │                      │
+                           SELL_CALL  │  CLOSE_POSITION      │ expired OTM
+                                      ↓                      │
+                                 SHORT_CALL ─────────────────┘
+                                      │
+                                 assigned
+                                      ↓
+                                 IDLE_CASH
 ```
 
-- **selling_put**: Hold cash. Sell OTM put. If assigned, buy ETH at strike → move to selling_call.
-- **selling_call**: Hold ETH. Sell OTM call. If assigned, sell ETH at strike → move to selling_put.
+Phase type: `"idle_cash" | "short_put" | "holding_eth" | "short_call"`
+
+- **idle_cash**: No position, no open option. Strategy evaluates `BasePutRule`.
+- **short_put**: Short put open. Waiting for expiry.
+- **holding_eth**: Assigned on put, holding ETH. Strategy evaluates `LowPremiumSkipRule` then `AdaptiveCallRule`.
+- **short_call**: Short call open. Waiting for expiry.
+
+The `holding_eth` state enables decision-making between cycles: sell a call, skip, or close the position.
+
+## Signal-Based Architecture
+
+### Flow
+
+```
+MarketSnapshot → Rules → Signal → Executor → Events → State reducer → PortfolioState
+```
+
+1. **Rules** are pure functions: `(market, portfolio, config) → Signal | null`
+2. **Strategy evaluator** runs rules in priority order; first non-null Signal wins, default `HOLD`
+3. **Executor** converts Signals into Events (sim uses BS pricing; a future live executor uses real fills)
+4. **State reducer** (`applyEvents`) applies Events to produce new `PortfolioState`
+
+### Signals (strategy intent)
+
+| Action | Produced by | Fields |
+|--------|-------------|--------|
+| `SELL_PUT` | `BasePutRule` | strike, delta, premium, rule, reason |
+| `SELL_CALL` | `AdaptiveCallRule` | strike, delta, premium, rule, reason |
+| `SKIP` | `LowPremiumSkipRule` | rule, reason |
+| `CLOSE_POSITION` | (future rules) | rule, reason |
+| `ROLL` | (future rules) | newStrike, newDelta, credit, rule, reason |
+| `HOLD` | default | (no fields) |
+
+### Events (execution facts)
+
+| Event | When |
+|-------|------|
+| `OPTION_SOLD` | Signal executed: put or call sold |
+| `OPTION_EXPIRED` | Expiry resolved: assigned or OTM |
+| `ETH_BOUGHT` | Put assigned |
+| `ETH_SOLD` | Call assigned |
+| `PREMIUM_COLLECTED` | Option expired (always collected) |
+| `CYCLE_SKIPPED` | SKIP signal executed |
+| `POSITION_CLOSED` | CLOSE_POSITION signal executed |
+
+## Rules
+
+Each rule has a name, priority (lower = evaluated first), and a phase guard.
+
+| Rule | Priority | Phase | Signal | Description |
+|------|----------|-------|--------|-------------|
+| `LowPremiumSkipRule` | 50 | `holding_eth` | `SKIP` | Skip call cycle when net premium < `skipThresholdPct` of position value |
+| `BasePutRule` | 100 | `idle_cash` | `SELL_PUT` | Sell OTM put at `targetDelta` |
+| `AdaptiveCallRule` | 100 | `holding_eth` | `SELL_CALL` | Sell OTM call with delta scaled by unrealized P/L |
+
+Priority ordering: safety/skip rules (50) preempt selection rules (100). A `SKIP` at priority 50 prevents `SELL_CALL` at priority 100 from firing.
+
+### Planned rules (from IMPROVEMENTS.md)
+
+| Rule | Priority | Signal |
+|------|----------|--------|
+| `StopLossRule` | 10 | `CLOSE_POSITION` |
+| `MinStrikeRule` | 20 | `SKIP` or adjusts strike |
+| `RollRule` | 30 | `ROLL` |
+| `TrendFilterRule` | 40 | `SKIP` |
+| `IVRankDeltaRule` | 90 | `SELL_PUT` / `SELL_CALL` |
 
 ## Configuration
 
-### WheelConfig
+### StrategyConfig
 
 | Parameter | Type | Example | Description |
 |-----------|------|---------|-------------|
@@ -95,19 +170,20 @@ premium = rawPremium * (1 - bidAskSpreadPct)
 
 ## Trade Lifecycle
 
-1. **Open**: Compute strike and premium via BS. Record `spotAtOpen`, `delta`, `IV`.
-2. **Hold**: Option is open for `cycleLengthDays` days.
-3. **Expire**: Check assignment at cycle end:
-   - Put: assigned if `spot < strike`
-   - Call: assigned if `spot >= strike`
-4. **Settle**: Compute realized P/L. Transition phase if assigned.
-5. **Next**: Immediately open next cycle (or skip if threshold not met).
+1. **Decision point**: No open option, or open option has expired (day >= expiryDay).
+2. **Resolve expiration** (if option open): Check assignment, emit `OPTION_EXPIRED` + `PREMIUM_COLLECTED` + assignment events.
+3. **Evaluate rules**: Run rules in priority order → produce Signal.
+4. **Execute signal**: Executor converts Signal to Events (BS pricing for sim).
+5. **Update state**: `applyEvents` reducer applies Events → new PortfolioState.
+6. **Log**: `SignalLogEntry` records market, signal, events, and before/after portfolio snapshots.
 
 ## Output
 
-### TradeRecord (per cycle)
+### SignalLogEntry (per decision)
 
-`type`, `strike`, `premium`, `startDay`, `endDay`, `assigned`, `pl`, `spotAtOpen`, `spotAtExpiration`, `entryPrice`, `impliedVol`, `delta`
+Every decision point produces a log entry with: `day`, `market`, `portfolioBefore`, `signal`, `events[]`, `portfolioAfter`.
+
+Replaces the old `TradeRecord`. Contains the signal (with rule name and reason), execution events (premium, fees, assignment), and full state snapshots.
 
 ### DailyState (per day)
 
@@ -115,4 +191,15 @@ premium = rawPremium * (1 - bidAskSpreadPct)
 
 ### SimulationResult (aggregate)
 
-`trades[]`, `dailyState[]`, `totalRealizedPL`, `totalPremiumCollected`, `totalAssignments`, `totalSkippedCycles`
+```typescript
+{
+  signalLog: SignalLogEntry[];
+  dailyStates: DailyState[];
+  summary: {
+    totalRealizedPL: number;
+    totalPremiumCollected: number;
+    totalAssignments: number;
+    totalSkippedCycles: number;
+  };
+}
+```

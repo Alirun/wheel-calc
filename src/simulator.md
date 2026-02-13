@@ -9,6 +9,7 @@ Generate random ETH price series and Monte Carlo the Wheel strategy across many 
 
 ```js
 import {runMonteCarlo, rerunSingle} from "./components/monte-carlo.js";
+import {defaultRules} from "./components/strategy/rules.js";
 ```
 
 <div class="grid grid-cols-3">
@@ -58,24 +59,18 @@ const strategyParams = view(Inputs.form({
     <h3>Strategy Rules</h3>
 
 ```js
-const rulesHtml = html`<ol style="margin:0;padding-left:1.2rem;line-height:1.7;font-size:0.85rem">
-  <li><strong>Sell PUT</strong> at <code>${strategyParams.targetDelta.toFixed(2)}</code>Δ, <code>${strategyParams.cycleLengthDays}</code>d expiry, IV = <code>${(impliedVol * 100).toFixed(0)}%</code></li>
-  <li>PUT expires OTM (spot &ge; strike) &rarr; collect premium, go to 1</li>
-  <li>PUT assigned (spot &lt; strike) &rarr; buy ETH at strike. Sell CALLs.</li>
-  ${strategyParams.adaptiveCalls
-    ? html`<li><strong>Sell CALL</strong> &mdash; adaptive delta:
-        <ul style="margin:0.15rem 0;padding-left:1rem">
-          <li>Underwater &rarr; Δ &asymp; <code>${strategyParams.minCallDelta.toFixed(2)}</code></li>
-          <li>Breakeven &rarr; Δ &asymp; <code>${((strategyParams.minCallDelta + strategyParams.maxCallDelta) / 2).toFixed(2)}</code></li>
-          <li>Profitable &rarr; Δ &asymp; <code>${strategyParams.maxCallDelta.toFixed(2)}</code></li>
-          <li>Premium &lt; <code>${strategyParams.skipThresholdPct.toFixed(1)}%</code> of position &rarr; <strong>SKIP</strong></li>
-        </ul>
-      </li>`
-    : html`<li><strong>Sell CALL</strong> at <code>${strategyParams.targetDelta.toFixed(2)}</code>Δ, <code>${strategyParams.cycleLengthDays}</code>d expiry</li>`
-  }
-  <li>CALL expires OTM &rarr; collect premium, go to 4</li>
-  <li>CALL assigned &rarr; sell ETH at strike. Return to 1.</li>
-</ol>`;
+const activeRules = defaultRules();
+const rulesHtml = html`<div style="font-size:0.82rem;line-height:1.5">
+  ${activeRules.map((r, i) => html`
+    <div style="margin-bottom:0.6rem;padding:0.4rem 0.5rem;border-radius:4px;border:1px solid var(--theme-foreground-faintest)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.2rem">
+        <strong>${r.name}</strong>
+        <span style="font-size:0.7rem;color:var(--theme-foreground-muted)">P${r.priority} · ${r.phase}</span>
+      </div>
+      <div style="color:var(--theme-foreground-muted);font-size:0.78rem">${r.description}</div>
+    </div>
+  `)}
+</div>`;
 ```
 
 ${rulesHtml}
@@ -94,7 +89,7 @@ const market = {
   annualDrift: marketParams.annualDrift / 100
 };
 
-const wheelConfig = {
+const strategyConfig = {
   targetDelta: strategyParams.targetDelta,
   impliedVol: impliedVol,
   riskFreeRate: costParams.riskFreeRate / 100,
@@ -111,7 +106,7 @@ const wheelConfig = {
   } : {})
 };
 
-const mc = runMonteCarlo(market, wheelConfig, marketParams.numSimulations);
+const mc = runMonteCarlo(market, strategyConfig, marketParams.numSimulations);
 ```
 
 ## Monte Carlo Summary
@@ -231,14 +226,16 @@ const detailSeed = view(Inputs.range([1, marketParams.numSimulations], {
 ```
 
 ```js
-const selected = rerunSingle(market, wheelConfig, detailSeed);
+const selected = rerunSingle(market, strategyConfig, detailSeed);
 const selectedPrices = selected.prices;
 const selectedResult = selected.result;
 
-const selectedFullCycles = selectedResult.trades.filter((t) => t.type === "call" && t.assigned).length;
+const selectedFullCycles = selectedResult.signalLog.filter(
+  (entry) => entry.events.some((e) => e.type === "OPTION_EXPIRED" && e.optionType === "call" && e.assigned)
+).length;
 const capitalAtRisk = marketParams.startPrice * strategyParams.contracts;
 const yearsElapsed = marketParams.days / 365;
-const selectedAPR = yearsElapsed > 0 ? (selectedResult.totalRealizedPL / capitalAtRisk) / yearsElapsed * 100 : 0;
+const selectedAPR = yearsElapsed > 0 ? (selectedResult.summary.totalRealizedPL / capitalAtRisk) / yearsElapsed * 100 : 0;
 ```
 
 ## Run Detail: Seed ${detailSeed}
@@ -246,8 +243,8 @@ const selectedAPR = yearsElapsed > 0 ? (selectedResult.totalRealizedPL / capital
 <div style="display:flex;flex-wrap:wrap;gap:0.75rem;">
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
     <h3 style="margin:0;font-size:0.75rem;">Realized P/L</h3>
-    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${selectedResult.totalRealizedPL >= 0 ? '#2ca02c' : '#d62728'}">
-      ${selectedResult.totalRealizedPL >= 0 ? '+' : ''}$${selectedResult.totalRealizedPL.toFixed(2)}
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${selectedResult.summary.totalRealizedPL >= 0 ? '#2ca02c' : '#d62728'}">
+      ${selectedResult.summary.totalRealizedPL >= 0 ? '+' : ''}$${selectedResult.summary.totalRealizedPL.toFixed(2)}
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
@@ -259,12 +256,12 @@ const selectedAPR = yearsElapsed > 0 ? (selectedResult.totalRealizedPL / capital
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
     <h3 style="margin:0;font-size:0.75rem;">Premiums Collected</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:#2ca02c">
-      +$${selectedResult.totalPremiumCollected.toFixed(2)}
+      +$${selectedResult.summary.totalPremiumCollected.toFixed(2)}
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
     <h3 style="margin:0;font-size:0.75rem;">Assignments</h3>
-    <p style="margin:0;font-size:1.25rem;font-weight:bold">${selectedResult.totalAssignments}</p>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold">${selectedResult.summary.totalAssignments}</p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
     <h3 style="margin:0;font-size:0.75rem;">Full Cycles</h3>
@@ -272,25 +269,191 @@ const selectedAPR = yearsElapsed > 0 ? (selectedResult.totalRealizedPL / capital
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
     <h3 style="margin:0;font-size:0.75rem;">Skipped Cycles</h3>
-    <p style="margin:0;font-size:1.25rem;font-weight:bold">${selectedResult.totalSkippedCycles}</p>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold">${selectedResult.summary.totalSkippedCycles}</p>
+  </div>
+</div>
+
+### State Machine
+
+```js
+const lastPhase = selectedResult.dailyStates[selectedResult.dailyStates.length - 1]?.phase ?? "idle_cash";
+
+const smNodes = [
+  {id: "idle_cash", label: "IDLE CASH", x: 0, y: 0},
+  {id: "short_put", label: "SHORT PUT", x: 260, y: 0},
+  {id: "holding_eth", label: "HOLDING ETH", x: 260, y: 160},
+  {id: "short_call", label: "SHORT CALL", x: 0, y: 160}
+];
+
+const smEdges = [
+  {from: "idle_cash", to: "short_put", label: "sell put"},
+  {from: "short_put", to: "idle_cash", label: "expired OTM"},
+  {from: "short_put", to: "holding_eth", label: "assigned"},
+  {from: "holding_eth", to: "short_call", label: "sell call"},
+  {from: "holding_eth", to: "holding_eth", label: "skip"},
+  {from: "short_call", to: "holding_eth", label: "expired OTM"},
+  {from: "short_call", to: "idle_cash", label: "assigned"}
+];
+
+const phaseColors = {
+  idle_cash: "#2ca02c",
+  short_put: "#d62728",
+  holding_eth: "#ff7f0e",
+  short_call: "#1f77b4"
+};
+```
+
+```js
+const stateMachineSvg = (() => {
+  const ns = "http://www.w3.org/2000/svg";
+  const s = document.createElementNS(ns, "svg");
+  s.setAttribute("viewBox", "-90 -60 480 290");
+  s.style.maxWidth = "500px";
+  s.style.fontFamily = "var(--sans-serif)";
+  s.style.fontSize = "11px";
+
+  const defs = document.createElementNS(ns, "defs");
+  defs.innerHTML = `<marker id="ah" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="var(--theme-foreground-muted)"/></marker>`;
+  s.appendChild(defs);
+
+  for (const n of smNodes) {
+    const active = n.id === lastPhase;
+    const g = document.createElementNS(ns, "g");
+    g.setAttribute("transform", `translate(${n.x},${n.y})`);
+    const rect = document.createElementNS(ns, "rect");
+    Object.entries({x: -35, y: -14, width: 110, height: 28, rx: 6,
+      fill: active ? phaseColors[n.id] : "var(--theme-background-alt)",
+      stroke: phaseColors[n.id], "stroke-width": active ? 2.5 : 1.5,
+      opacity: active ? 1 : 0.6
+    }).forEach(([k, v]) => rect.setAttribute(k, String(v)));
+    g.appendChild(rect);
+    const text = document.createElementNS(ns, "text");
+    Object.entries({"text-anchor": "middle", dy: 4, x: 20,
+      fill: active ? "white" : "var(--theme-foreground)",
+      "font-weight": active ? "bold" : "normal", "font-size": 10
+    }).forEach(([k, v]) => text.setAttribute(k, String(v)));
+    text.textContent = n.label;
+    g.appendChild(text);
+    s.appendChild(g);
+  }
+
+  const edges = `
+    <!-- sell put: idle_cash → short_put (horizontal top, upper track) -->
+    <line x1="80" y1="-5" x2="220" y2="-5" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
+    <text x="150" y="-12" text-anchor="middle" fill="var(--theme-foreground-muted)" font-size="9">sell put</text>
+
+    <!-- expired OTM: short_put → idle_cash (horizontal top, lower track) -->
+    <line x1="220" y1="8" x2="80" y2="8" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
+    <text x="150" y="22" text-anchor="middle" fill="var(--theme-foreground-muted)" font-size="9">expired OTM</text>
+
+    <!-- assigned: short_put → holding_eth (vertical right side) -->
+    <line x1="310" y1="20" x2="310" y2="140" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
+    <text x="324" y="82" fill="var(--theme-foreground-muted)" font-size="9">assigned</text>
+
+    <!-- sell call: holding_eth → short_call (horizontal bottom, upper track) -->
+    <line x1="220" y1="155" x2="80" y2="155" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
+    <text x="150" y="148" text-anchor="middle" fill="var(--theme-foreground-muted)" font-size="9">sell call</text>
+
+    <!-- skip: holding_eth self-loop (right side) -->
+    <path d="M340,150 C370,140 370,180 340,170" fill="none" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
+    <text x="378" y="162" fill="var(--theme-foreground-muted)" font-size="9">skip</text>
+
+    <!-- expired OTM: short_call → holding_eth (horizontal bottom, lower track) -->
+    <line x1="80" y1="168" x2="220" y2="168" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
+    <text x="150" y="184" text-anchor="middle" fill="var(--theme-foreground-muted)" font-size="9">expired OTM</text>
+
+    <!-- assigned: short_call → idle_cash (straight vertical, left side) -->
+    <line x1="-45" y1="140" x2="-45" y2="20" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
+    <text x="-58" y="82" fill="var(--theme-foreground-muted)" font-size="9" text-anchor="end">assigned</text>
+  `;
+  const edgeGroup = document.createElementNS(ns, "g");
+  edgeGroup.innerHTML = edges;
+  s.appendChild(edgeGroup);
+
+  return s;
+})();
+```
+
+<div class="grid grid-cols-2">
+  <div class="card">
+    <h3 style="margin-top:0">State Machine</h3>
+    ${stateMachineSvg}
+  </div>
+  <div class="card" style="overflow-y:auto;max-height:340px">
+    <h3 style="margin-top:0">Signal Log</h3>
+
+```js
+const signalLogRows = selectedResult.signalLog.map((entry) => {
+  const sig = entry.signal;
+  const actionColors = {
+    SELL_PUT: "#d62728", SELL_CALL: "#1f77b4", SKIP: "#ff7f0e",
+    CLOSE_POSITION: "#9467bd", HOLD: "var(--theme-foreground-muted)", ROLL: "#8c564b"
+  };
+  const color = actionColors[sig.action] ?? "var(--theme-foreground)";
+  const rule = sig.action !== "HOLD" && "rule" in sig ? sig.rule : "";
+  const reason = sig.action !== "HOLD" && "reason" in sig ? sig.reason : "";
+  const phaseBefore = entry.portfolioBefore.phase;
+  const phaseAfter = entry.portfolioAfter.phase;
+  const transition = phaseBefore !== phaseAfter ? `${phaseBefore} → ${phaseAfter}` : phaseBefore;
+
+  return html`<tr style="font-size:0.78rem">
+    <td>${entry.day}</td>
+    <td style="color:${color};font-weight:600">${sig.action}</td>
+    <td>${rule}</td>
+    <td style="color:var(--theme-foreground-muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${reason}">${reason}</td>
+    <td style="font-size:0.72rem">${transition}</td>
+  </tr>`;
+});
+```
+
+${signalLogRows.length === 0
+  ? html`<p style="color:var(--theme-foreground-muted)">No signals yet</p>`
+  : html`<table style="width:100%;border-collapse:collapse">
+      <thead><tr style="font-size:0.72rem;color:var(--theme-foreground-muted);border-bottom:1px solid var(--theme-foreground-faintest)">
+        <th style="text-align:left;padding:2px 4px">Day</th>
+        <th style="text-align:left;padding:2px 4px">Signal</th>
+        <th style="text-align:left;padding:2px 4px">Rule</th>
+        <th style="text-align:left;padding:2px 4px">Reason</th>
+        <th style="text-align:left;padding:2px 4px">Phase</th>
+      </tr></thead>
+      <tbody>${signalLogRows}</tbody>
+    </table>`
+}
+
   </div>
 </div>
 
 ### Price & Position
 
 ```js
-const cycleBands = selectedResult.trades.map((t) => ({
-  x1: t.startDay,
-  x2: t.endDay,
-  type: t.type,
-  strike: t.strike
-}));
+const cycleBands = [];
+const signalMarkers = [];
+for (const entry of selectedResult.signalLog) {
+  for (const e of entry.events) {
+    if (e.type === "OPTION_SOLD") {
+      cycleBands.push({
+        x1: e.openDay,
+        x2: e.expiryDay,
+        type: e.optionType,
+        strike: e.strike
+      });
+    }
+  }
+  if (entry.signal.action !== "HOLD") {
+    signalMarkers.push({
+      day: entry.day,
+      price: entry.market.spot,
+      action: entry.signal.action,
+      rule: entry.signal.action !== "HOLD" ? entry.signal.rule : ""
+    });
+  }
+}
 
-const assignments = selectedResult.trades.filter((t) => t.assigned).map((t) => ({
-  day: t.endDay,
-  price: selectedPrices[t.endDay],
-  type: t.type
-}));
+const assignments = selectedResult.signalLog.flatMap((entry) =>
+  entry.events
+    .filter((e) => e.type === "OPTION_EXPIRED" && e.assigned)
+    .map((e) => ({day: entry.day, price: e.spot, type: e.optionType}))
+);
 ```
 
 <div class="card">
@@ -328,6 +491,21 @@ const assignments = selectedResult.trades.filter((t) => t.assigned).map((t) => (
           strokeWidth: 1.5,
           tip: true
         }),
+        Plot.dot(signalMarkers, {
+          x: "day",
+          y: "price",
+          fill: (d) => ({
+            SELL_PUT: "#d62728",
+            SELL_CALL: "#1f77b4",
+            SKIP: "#ff7f0e",
+            CLOSE_POSITION: "#9467bd",
+            ROLL: "#8c564b"
+          })[d.action] ?? "#999",
+          r: 4,
+          symbol: "circle",
+          tip: true,
+          title: (d) => `${d.action} (${d.rule}) @ day ${d.day}`
+        }),
         Plot.dot(assignments, {
           x: "day",
           y: "price",
@@ -342,21 +520,27 @@ const assignments = selectedResult.trades.filter((t) => t.assigned).map((t) => (
   )}
 </div>
 
+<p><small>
+  <span style="color:#d62728">&#9679;</span> Sell Put &nbsp;
+  <span style="color:#1f77b4">&#9679;</span> Sell Call &nbsp;
+  <span style="color:#ff7f0e">&#9679;</span> Skip &nbsp;
+  <span style="color:#d62728">&#9670;</span> Put Assigned &nbsp;
+  <span style="color:#1f77b4">&#9670;</span> Call Assigned
+</small></p>
+
 ### Inventory & Unrealized P/L
 
 ```js
 const inventoryEvents = [];
-let invQty = 0;
-let invCostBasis = null;
-for (const t of selectedResult.trades) {
-  if (t.type === "put" && t.assigned) {
-    invQty = strategyParams.contracts;
-    invCostBasis = t.strike;
-    inventoryEvents.push({day: t.endDay, event: "PUT assigned", qty: invQty, costBasis: invCostBasis, spot: t.spotAtExpiration});
-  } else if (t.type === "call" && t.assigned) {
-    inventoryEvents.push({day: t.endDay, event: "CALL assigned", qty: 0, costBasis: invCostBasis, spot: t.spotAtExpiration});
-    invQty = 0;
-    invCostBasis = null;
+for (const entry of selectedResult.signalLog) {
+  for (const e of entry.events) {
+    if (e.type === "ETH_BOUGHT") {
+      inventoryEvents.push({day: entry.day, event: "PUT assigned", qty: e.size, costBasis: e.price, spot: entry.market.spot});
+    } else if (e.type === "ETH_SOLD") {
+      inventoryEvents.push({day: entry.day, event: "CALL assigned", qty: 0, costBasis: null, spot: entry.market.spot});
+    } else if (e.type === "POSITION_CLOSED") {
+      inventoryEvents.push({day: entry.day, event: "POSITION CLOSED", qty: 0, costBasis: null, spot: e.price});
+    }
   }
 }
 ```
@@ -369,7 +553,7 @@ for (const t of selectedResult.trades) {
       : html`<table style="width:100%">
           <thead><tr><th>Day</th><th>Event</th><th>ETH Held</th><th>Cost Basis</th><th>Spot</th><th>Unrealized</th></tr></thead>
           <tbody>${inventoryEvents.map((e) => {
-            const unrealized = e.qty > 0 ? (e.spot - e.costBasis) * e.qty : 0;
+            const unrealized = e.qty > 0 && e.costBasis !== null ? (e.spot - e.costBasis) * e.qty : 0;
             return html`<tr>
               <td>${e.day}</td>
               <td><strong>${e.event}</strong></td>
@@ -385,16 +569,20 @@ for (const t of selectedResult.trades) {
   <div class="card">
     <h3>Final Position</h3>
     ${(() => {
-      const last = selectedResult.dailyState[selectedResult.dailyState.length - 1];
-      if (!last.holdingETH) return html`<p>No ETH held — fully in cash</p><p>Phase: <strong>Selling PUT</strong></p>`;
-      const lastTrade = [...selectedResult.trades].reverse().find((t) => t.type === "put" && t.assigned);
-      const cb = lastTrade ? lastTrade.strike : 0;
+      const last = selectedResult.dailyStates[selectedResult.dailyStates.length - 1];
+      if (!last.holdingETH) return html`<p>No ETH held — fully in cash</p><p>Phase: <strong>${last.phase}</strong></p>`;
+      const costBasis = (() => {
+        for (let i = inventoryEvents.length - 1; i >= 0; i--) {
+          if (inventoryEvents[i].costBasis !== null) return inventoryEvents[i].costBasis;
+        }
+        return 0;
+      })();
       return html`
         <p>Holding: <strong>${strategyParams.contracts} ETH</strong></p>
-        <p>Cost basis: <strong>$${cb.toFixed(0)}</strong></p>
+        <p>Cost basis: <strong>$${costBasis.toFixed(0)}</strong></p>
         <p>Current spot: <strong>$${last.price.toFixed(0)}</strong></p>
         <p>Unrealized: <span style="font-weight:bold;color:${last.unrealizedPL >= 0 ? '#2ca02c' : '#d62728'}">${last.unrealizedPL >= 0 ? '+' : ''}$${last.unrealizedPL.toFixed(2)}</span></p>
-        <p>Phase: <strong>Selling CALL</strong></p>
+        <p>Phase: <strong>${last.phase}</strong></p>
       `;
     })()}
   </div>
@@ -410,13 +598,13 @@ for (const t of selectedResult.trades) {
       y: {label: "Unrealized P/L (USD)", grid: true},
       marks: [
         Plot.ruleY([0]),
-        Plot.areaY(selectedResult.dailyState, {
+        Plot.areaY(selectedResult.dailyStates, {
           x: "day",
           y: "unrealizedPL",
           fill: (d) => d.unrealizedPL >= 0 ? "#2ca02c" : "#d62728",
           fillOpacity: 0.2
         }),
-        Plot.line(selectedResult.dailyState, {
+        Plot.line(selectedResult.dailyStates, {
           x: "day",
           y: "unrealizedPL",
           stroke: "#ff7f0e",
@@ -440,20 +628,20 @@ for (const t of selectedResult.trades) {
       y: {label: "P/L (USD)", grid: true},
       marks: [
         Plot.ruleY([0]),
-        Plot.areaY(selectedResult.dailyState, {
+        Plot.areaY(selectedResult.dailyStates, {
           x: "day",
           y: "cumulativePL",
           fill: "#2ca02c",
           fillOpacity: 0.15
         }),
-        Plot.line(selectedResult.dailyState, {
+        Plot.line(selectedResult.dailyStates, {
           x: "day",
           y: "cumulativePL",
           stroke: "#2ca02c",
           strokeWidth: 2,
           tip: true
         }),
-        Plot.line(selectedResult.dailyState, {
+        Plot.line(selectedResult.dailyStates, {
           x: "day",
           y: (d) => d.cumulativePL + d.unrealizedPL,
           stroke: "#ff7f0e",
@@ -474,77 +662,54 @@ for (const t of selectedResult.trades) {
 const tradeRows = [];
 let rowNum = 0;
 let runningPL = 0;
-let costBasis = null;
-const feePerContract = costParams.feePerTrade * strategyParams.contracts;
-for (const t of selectedResult.trades) {
-  // 1. Option sale event
+for (const entry of selectedResult.signalLog) {
   rowNum++;
-  const optionPL = t.premium * strategyParams.contracts - feePerContract;
-  runningPL += optionPL;
+  const sig = entry.signal;
+  const rule = sig.action !== "HOLD" ? sig.rule : "";
+  const reason = sig.action !== "HOLD" && "reason" in sig ? sig.reason : "";
+
+  let strike = null;
+  let delta = null;
+  let iv = null;
+  let premium = null;
+  let dPNL = null;
+
+  if (sig.action === "SELL_PUT" || sig.action === "SELL_CALL") {
+    strike = sig.strike;
+    delta = Math.abs(sig.delta);
+    iv = strategyConfig.impliedVol;
+    premium = sig.premium;
+  }
+
+  for (const e of entry.events) {
+    if (e.type === "PREMIUM_COLLECTED") {
+      dPNL = (dPNL ?? 0) + e.netAmount;
+      runningPL += e.netAmount;
+    }
+    if (e.type === "ETH_SOLD") {
+      dPNL = (dPNL ?? 0) + e.pl;
+      runningPL += e.pl;
+    }
+    if (e.type === "POSITION_CLOSED") {
+      dPNL = (dPNL ?? 0) + e.pl;
+      runningPL += e.pl;
+    }
+  }
+
   tradeRows.push({
     "#": rowNum,
-    Day: t.startDay,
-    Event: `SELL ${t.type.toUpperCase()}`,
-    Strike: t.strike,
-    Spot: t.spotAtOpen,
-    "Entry": costBasis,
-    Delta: Math.abs(t.delta),
-    IV: t.impliedVol,
-    Premium: t.premium,
-    "dPNL": optionPL,
+    Day: entry.day,
+    Rule: rule,
+    Signal: sig.action,
+    Strike: strike,
+    Spot: entry.market.spot,
+    Delta: delta,
+    IV: iv,
+    Premium: premium,
+    Reason: reason,
+    "dPNL": dPNL,
     "Total PNL": runningPL
   });
-
-  // 2. Expiration / assignment event
-  rowNum++;
-  if (!t.assigned) {
-    tradeRows.push({
-      "#": rowNum,
-      Day: t.endDay,
-      Event: `${t.type.toUpperCase()} EXPIRED`,
-      Strike: null,
-      Spot: t.spotAtExpiration,
-      "Entry": costBasis,
-      Delta: null,
-      IV: null,
-      Premium: null,
-      "dPNL": null,
-      "Total PNL": runningPL
-    });
-  } else if (t.type === "put") {
-    costBasis = t.strike;
-    tradeRows.push({
-      "#": rowNum,
-      Day: t.endDay,
-      Event: "BUY ETH",
-      Strike: t.strike,
-      Spot: t.spotAtExpiration,
-      "Entry": costBasis,
-      Delta: null,
-      IV: null,
-      Premium: null,
-      "dPNL": null,
-      "Total PNL": runningPL
-    });
-  } else {
-    // call assigned → sell ETH
-    const ethPL = (t.strike - (t.entryPrice ?? 0)) * strategyParams.contracts;
-    runningPL += ethPL;
-    tradeRows.push({
-      "#": rowNum,
-      Day: t.endDay,
-      Event: "SELL ETH",
-      Strike: t.strike,
-      Spot: t.spotAtExpiration,
-      "Entry": costBasis,
-      Delta: null,
-      IV: null,
-      Premium: null,
-      "dPNL": ethPL,
-      "Total PNL": runningPL
-    });
-    costBasis = null;
-  }
 }
 ```
 
@@ -556,7 +721,6 @@ for (const t of selectedResult.trades) {
     format: {
       Strike: (d) => d != null ? `$${d.toFixed(0)}` : "—",
       Spot: (d) => `$${d.toFixed(0)}`,
-      "Entry": (d) => d != null ? `$${d.toFixed(0)}` : "—",
       Delta: (d) => d != null ? d.toFixed(2) : "—",
       IV: (d) => d != null ? `${(d * 100).toFixed(0)}%` : "—",
       Premium: (d) => d != null ? `$${d.toFixed(2)}` : "—",

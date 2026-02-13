@@ -3,7 +3,7 @@
 ## Overview
 
 - Purpose: Define price generation and Monte Carlo analysis.
-- Sources: `src/components/price-gen.ts`, `src/components/monte-carlo.ts`, `src/components/black-scholes.ts`
+- Sources: `src/components/price-gen.ts`, `src/components/monte-carlo.ts`, `src/components/black-scholes.ts`, `src/components/strategy/simulate.ts`
 
 ## Price Generation
 
@@ -66,8 +66,10 @@ Source: `monte-carlo.ts`
 
 | Function | Purpose |
 |----------|---------|
-| `runMonteCarlo(market, wheelConfig, numRuns)` | Run N simulations, return aggregated stats |
-| `rerunSingle(market, wheelConfig, seed)` | Re-run one seed, return prices + full SimulationResult |
+| `runMonteCarlo(market, config, numRuns)` | Run N simulations with `defaultRules()`, return aggregated stats |
+| `rerunSingle(market, config, seed)` | Re-run one seed with `defaultRules()`, return prices + full SimulationResult |
+
+Both functions accept `StrategyConfig` (was `WheelConfig`) and internally call `simulate(prices, rules, config)` from `strategy/simulate.ts`.
 
 ### MarketParams
 
@@ -87,7 +89,8 @@ Source: `monte-carlo.ts`
 | `unrealizedPL` | (lastSpot - entryPrice) * contracts, or 0 if not holding |
 | `apr` | (realizedPL / capitalAtRisk) / yearsElapsed * 100 |
 | `maxDrawdown` | Peak-to-trough of (cumulativePL + unrealizedPL) over daily states |
-| `fullCycles` | Count of call assignments (put→call→put completed) |
+| `fullCycles` | Count of call assignments (put→call→put completed), derived from `signalLog` |
+| `skippedCycles` | Count of SKIP signals |
 | `isWin` | totalPL > 0 |
 
 ### Aggregated Metrics (MonteCarloResult)

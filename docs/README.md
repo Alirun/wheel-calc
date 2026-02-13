@@ -7,5 +7,5 @@ Wheel strategy options simulator for ETH. Observable Framework app with pure Typ
 | Domain | File | Covers |
 |--------|------|--------|
 | Architecture | [architecture.md](architecture.md) | System layers, module graph, data flow, UI pages |
-| Strategy | [strategy.md](strategy.md) | Wheel phases, config params, adaptive logic, trade lifecycle |
+| Strategy | [strategy.md](strategy.md) | State machine (4 phases), signal-based rules, executor pattern, config, trade lifecycle |
 | Simulation | [simulation.md](simulation.md) | Price generation, Monte Carlo runner, metrics |

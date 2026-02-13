@@ -1,10 +1,7 @@
-// Monte Carlo analysis for the Wheel strategy simulator.
-// Runs N simulations with different seeds and aggregates results.
-
 import {generatePrices} from "./price-gen.js";
-import {simulateWheel} from "./wheel.js";
-import type {WheelConfig} from "./wheel.js";
-import type {PriceGenConfig} from "./price-gen.js";
+import {simulate} from "./strategy/simulate.js";
+import {defaultRules} from "./strategy/rules.js";
+import type {StrategyConfig, SimulationResult, SignalLogEntry} from "./strategy/types.js";
 
 export interface MarketParams {
   startPrice: number;
@@ -53,10 +50,10 @@ function median(sorted: number[]): number {
   return percentile(sorted, 50);
 }
 
-function computeMaxDrawdown(dailyState: {cumulativePL: number; unrealizedPL: number}[]): number {
+function computeMaxDrawdown(dailyStates: {cumulativePL: number; unrealizedPL: number}[]): number {
   let peak = -Infinity;
   let maxDD = 0;
-  for (const d of dailyState) {
+  for (const d of dailyStates) {
     const totalPL = d.cumulativePL + d.unrealizedPL;
     if (totalPL > peak) peak = totalPL;
     const dd = peak - totalPL;
@@ -65,14 +62,51 @@ function computeMaxDrawdown(dailyState: {cumulativePL: number; unrealizedPL: num
   return maxDD;
 }
 
+function countFullCycles(signalLog: SignalLogEntry[]): number {
+  return signalLog.filter(
+    (entry) => entry.events.some(
+      (e) => e.type === "OPTION_EXPIRED" && e.optionType === "call" && e.assigned,
+    ),
+  ).length;
+}
+
+function summarizeRun(
+  seed: number,
+  result: SimulationResult,
+  capitalAtRisk: number,
+  yearsElapsed: number,
+): RunSummary {
+  const lastDay = result.dailyStates[result.dailyStates.length - 1];
+  const unrealizedPL = lastDay ? lastDay.unrealizedPL : 0;
+  const totalPL = result.summary.totalRealizedPL + unrealizedPL;
+  const apr = yearsElapsed > 0
+    ? (result.summary.totalRealizedPL / capitalAtRisk) / yearsElapsed * 100
+    : 0;
+  const maxDrawdown = computeMaxDrawdown(result.dailyStates);
+
+  return {
+    seed,
+    totalPL,
+    realizedPL: result.summary.totalRealizedPL,
+    unrealizedPL,
+    premiumCollected: result.summary.totalPremiumCollected,
+    assignments: result.summary.totalAssignments,
+    fullCycles: countFullCycles(result.signalLog),
+    apr,
+    maxDrawdown,
+    skippedCycles: result.summary.totalSkippedCycles,
+    isWin: totalPL > 0,
+  };
+}
+
 export function runMonteCarlo(
   market: MarketParams,
-  wheelConfig: WheelConfig,
-  numRuns: number
+  config: StrategyConfig,
+  numRuns: number,
 ): MonteCarloResult {
-  const capitalAtRisk = market.startPrice * wheelConfig.contracts;
+  const capitalAtRisk = market.startPrice * config.contracts;
   const yearsElapsed = market.days / 365;
-
+  const rules = defaultRules();
   const runs: RunSummary[] = [];
 
   for (let seed = 1; seed <= numRuns; seed++) {
@@ -84,28 +118,8 @@ export function runMonteCarlo(
       seed,
     });
 
-    const result = simulateWheel(prices, wheelConfig);
-
-    const lastDay = result.dailyState[result.dailyState.length - 1];
-    const unrealizedPL = lastDay ? lastDay.unrealizedPL : 0;
-    const totalPL = result.totalRealizedPL + unrealizedPL;
-    const fullCycles = result.trades.filter((t) => t.type === "call" && t.assigned).length;
-    const apr = yearsElapsed > 0 ? (result.totalRealizedPL / capitalAtRisk) / yearsElapsed * 100 : 0;
-    const maxDrawdown = computeMaxDrawdown(result.dailyState);
-
-    runs.push({
-      seed,
-      totalPL,
-      realizedPL: result.totalRealizedPL,
-      unrealizedPL,
-      premiumCollected: result.totalPremiumCollected,
-      assignments: result.totalAssignments,
-      fullCycles,
-      apr,
-      maxDrawdown,
-      skippedCycles: result.totalSkippedCycles,
-      isWin: totalPL > 0,
-    });
+    const result = simulate(prices, rules, config);
+    runs.push(summarizeRun(seed, result, capitalAtRisk, yearsElapsed));
   }
 
   const wins = runs.filter((r) => r.isWin).length;
@@ -130,9 +144,9 @@ export function runMonteCarlo(
 
 export function rerunSingle(
   market: MarketParams,
-  wheelConfig: WheelConfig,
-  seed: number
-): {prices: number[]; result: ReturnType<typeof simulateWheel>} {
+  config: StrategyConfig,
+  seed: number,
+): {prices: number[]; result: SimulationResult} {
   const prices = generatePrices({
     startPrice: market.startPrice,
     days: market.days,
@@ -140,6 +154,7 @@ export function rerunSingle(
     annualDrift: market.annualDrift,
     seed,
   });
-  const result = simulateWheel(prices, wheelConfig);
+  const rules = defaultRules();
+  const result = simulate(prices, rules, config);
   return {prices, result};
 }

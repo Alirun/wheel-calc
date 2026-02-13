@@ -12,17 +12,25 @@
 Pure TypeScript modules. No framework imports. Designed for reuse in a production execution engine.
 
 ```
-black-scholes.ts   ← option pricing, delta, strike-finding (zero deps)
-price-gen.ts       ← seeded GBM price series (zero deps)
-wheel.ts           ← strategy engine (imports black-scholes)
-monte-carlo.ts     ← MC runner (imports price-gen, wheel)
-deribit.ts         ← Deribit public API fetch wrappers (zero deps)
+black-scholes.ts       ← option pricing, delta, strike-finding (zero deps)
+price-gen.ts           ← seeded GBM price series (zero deps)
+monte-carlo.ts         ← MC runner (imports price-gen, strategy/)
+deribit.ts             ← Deribit public API fetch wrappers (zero deps)
+strategy/
+  types.ts             ← Signal, Event, MarketSnapshot, PortfolioState, Phase, Config
+  rules.ts             ← Rule interface + BasePutRule, AdaptiveCallRule, LowPremiumSkipRule
+  strategy.ts          ← evaluateRules (priority-ordered), isDecisionPoint
+  executor.ts          ← Executor interface + SimExecutor (sim-specific pricing/assignment)
+  state.ts             ← applyEvents reducer, initialPortfolio, toDailyState
+  simulate.ts          ← Main simulation loop (orchestrator)
 ```
 
 Dependency graph:
 
 ```
-monte-carlo → wheel → black-scholes
+monte-carlo → strategy/simulate → strategy/strategy → strategy/rules → black-scholes
+                                → strategy/executor → black-scholes (via rules)
+                                → strategy/state
             → price-gen
 deribit (standalone)
 ```
@@ -46,15 +54,19 @@ UI inputs (sliders/toggles)
   ↓
 marketParams + wheelConfig
   ↓
-runMonteCarlo(market, wheelConfig, numRuns)
+runMonteCarlo(market, config, numRuns)
+  ├── rules = defaultRules()
   ├── for seed 1..N:
   │     generatePrices(seed) → prices[]
-  │     simulateWheel(prices, config) → SimulationResult
+  │     simulate(prices, rules, config) → SimulationResult
+  │       ├── signalLog: SignalLogEntry[] (every decision with before/after state)
+  │       ├── dailyStates: DailyState[] (per-day portfolio snapshot)
+  │       └── summary: { totalRealizedPL, totalPremiumCollected, totalAssignments, totalSkippedCycles }
   │     → RunSummary (totalPL, apr, assignments, drawdown, ...)
   ↓
 MonteCarloResult (winRate, APR distribution, mean P/L, mean drawdown)
   ↓
-rerunSingle(market, wheelConfig, selectedSeed) → detail view
+rerunSingle(market, config, selectedSeed) → detail view
 ```
 
 ## Key Invariants
@@ -62,3 +74,5 @@ rerunSingle(market, wheelConfig, selectedSeed) → detail view
 - Computation modules never import from Observable Framework or any UI code.
 - All randomness is seeded. Same seed + same config = identical output.
 - Prices are daily granularity. Options expire at cycle boundaries (checked daily).
+- Strategy logic (rules) is executor-agnostic. Rules produce Signals; the Executor turns Signals into Events. Swapping `SimExecutor` for a live executor requires no changes to rules or the simulation loop.
+- Portfolio state is updated only through the `applyEvents` reducer. No direct mutation.

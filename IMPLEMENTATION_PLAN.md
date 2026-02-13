@@ -339,35 +339,35 @@ src/components/
 
 **Files:** `src/components/strategy/types.ts`, `src/components/strategy/state.ts`
 
-- [ ] Define `MarketSnapshot`, `Phase` (4 states), `Position`, `OpenOption`, `PortfolioState`
-- [ ] Define `Signal` union type with `rule` and `reason` fields on every variant
-- [ ] Define `Event` union type for all execution outcomes
-- [ ] Define `SignalLogEntry` with before/after portfolio snapshots
-- [ ] Define `StrategyConfig` (superset of current `WheelConfig` — same fields, cleaner naming)
-- [ ] Define `DailyState` (same as current, plus phase uses 4-state model)
-- [ ] Define `SimulationResult` (signalLog, dailyStates, finalPortfolio, summary metrics)
-- [ ] Implement `initialPortfolio()` → idle_cash state with zero P/L
-- [ ] Implement `applyEvents()` reducer — pure function, handles all Event types
-- [ ] Implement `snapshotPortfolio()` — deep copy for logging
+- [x] Define `MarketSnapshot`, `Phase` (4 states), `Position`, `OpenOption`, `PortfolioState`
+- [x] Define `Signal` union type with `rule` and `reason` fields on every variant
+- [x] Define `Event` union type for all execution outcomes
+- [x] Define `SignalLogEntry` with before/after portfolio snapshots
+- [x] Define `StrategyConfig` (superset of current `WheelConfig` — same fields, cleaner naming)
+- [x] Define `DailyState` (same as current, plus phase uses 4-state model)
+- [x] Define `SimulationResult` (signalLog, dailyStates, finalPortfolio, summary metrics)
+- [x] Implement `initialPortfolio()` → idle_cash state with zero P/L
+- [x] Implement `applyEvents()` reducer — pure function, handles all Event types
+- [x] Implement `snapshotPortfolio()` — deep copy for logging
 
 ### Phase 2: Rules
 
 **Files:** `src/components/strategy/rules.ts`
 
-- [ ] Define `Rule` interface: `{ name, priority, evaluate(market, portfolio, config) → Signal | null }`
-- [ ] Implement `BasePutRule` — when in `idle_cash`, compute target delta, find strike via BS, emit `SELL_PUT`
-- [ ] Implement `AdaptiveCallRule` — when in `holding_eth`, compute adaptive delta from P/L, find strike, emit `SELL_CALL`. Falls back to fixed delta when adaptive is disabled.
-- [ ] Implement `LowPremiumSkipRule` — when in `holding_eth`, check if net premium < threshold, emit `SKIP`
-- [ ] Implement `defaultRules(config)` helper — returns the 3 rules above in priority order
-- [ ] Verify: each rule is independently unit-testable with a handcrafted `MarketSnapshot` + `PortfolioState`
+- [x] Define `Rule` interface: `{ name, priority, evaluate(market, portfolio, config) → Signal | null }`
+- [x] Implement `BasePutRule` — when in `idle_cash`, compute target delta, find strike via BS, emit `SELL_PUT`
+- [x] Implement `AdaptiveCallRule` — when in `holding_eth`, compute adaptive delta from P/L, find strike, emit `SELL_CALL`. Falls back to fixed delta when adaptive is disabled.
+- [x] Implement `LowPremiumSkipRule` — when in `holding_eth`, check if net premium < threshold, emit `SKIP`
+- [x] Implement `defaultRules(config)` helper — returns the 3 rules above in priority order
+- [x] Verify: each rule is independently unit-testable with a handcrafted `MarketSnapshot` + `PortfolioState`
 
 ### Phase 3: Strategy evaluator
 
 **Files:** `src/components/strategy/strategy.ts`
 
-- [ ] Implement `evaluateRules(rules, market, portfolio, config) → Signal`
+- [x] Implement `evaluateRules(rules, market, portfolio, config) → Signal`
   - Sort by priority, return first non-null signal, default to `HOLD`
-- [ ] Implement `isDecisionPoint(day, portfolio, config) → boolean`
+- [x] Implement `isDecisionPoint(day, portfolio, config) → boolean`
   - True when: no open option, or open option has expired (day >= expiryDay)
   - This replaces the current `daysSinceCycleStart >= cycleLengthDays` check
 
@@ -375,8 +375,8 @@ src/components/
 
 **Files:** `src/components/strategy/executor.ts`
 
-- [ ] Define `Executor` interface with `resolveExpiration()` and `execute()` methods
-- [ ] Implement `SimExecutor`:
+- [x] Define `Executor` interface with `resolveExpiration()` and `execute()` methods
+- [x] Implement `SimExecutor`:
   - `resolveExpiration()`: check spot vs strike, emit `OPTION_EXPIRED` + `ETH_BOUGHT`/`ETH_SOLD` + `PREMIUM_COLLECTED`
   - `execute(SELL_PUT)`: emit `OPTION_SOLD` with BS-priced premium adjusted for bid-ask + fees
   - `execute(SELL_CALL)`: same as above for calls
@@ -384,48 +384,107 @@ src/components/
   - `execute(CLOSE_POSITION)`: emit `POSITION_CLOSED` + `ETH_SOLD` at spot
   - `execute(HOLD)`: emit nothing
   - `execute(ROLL)`: emit `OPTION_EXPIRED` (close current) + `OPTION_SOLD` (open new)
-- [ ] Port Black-Scholes pricing and strike-finding calls from current `wheel.ts` into executor
+- [x] Port Black-Scholes pricing and strike-finding calls from current `wheel.ts` into executor
 
 ### Phase 5: Simulation loop
 
 **Files:** `src/components/strategy/simulate.ts`
 
-- [ ] Implement `simulate(prices, rules, config) → SimulationResult`
+- [x] Implement `simulate(prices, rules, config) → SimulationResult`
   - Instantiate `SimExecutor`
   - Loop over days, check `isDecisionPoint`, resolve expiration, evaluate rules, execute signal
   - Build `signalLog[]`, `dailyStates[]`, summary metrics
-- [ ] Implement `toDailyState()` — converts market + portfolio to DailyState for charts
-- [ ] Implement summary computation (totalRealizedPL, totalPremiumCollected, totalAssignments, totalSkippedCycles) from final portfolio state
+- [x] Implement `toDailyState()` — converts market + portfolio to DailyState for charts
+- [x] Implement summary computation (totalRealizedPL, totalPremiumCollected, totalAssignments, totalSkippedCycles) from final portfolio state
 
 ### Phase 6: Monte Carlo integration
 
 **Files:** `src/components/monte-carlo.ts`
 
-- [ ] Update imports to use `simulate()` from `strategy/simulate.ts`
-- [ ] Update `runMonteCarlo()` to pass `defaultRules(config)` to `simulate()`
-- [ ] Update `RunSummary` computation to read from new `SimulationResult` shape
-- [ ] Update `rerunSingle()` similarly
-- [ ] Ensure `MonteCarloResult` shape is unchanged (or adapt minimally)
+- [x] Update imports to use `simulate()` from `strategy/simulate.ts`
+- [x] Update `runMonteCarlo()` to pass `defaultRules(config)` to `simulate()`
+- [x] Update `RunSummary` computation to read from new `SimulationResult` shape
+- [x] Update `rerunSingle()` similarly
+- [x] Ensure `MonteCarloResult` shape is unchanged (or adapt minimally)
 
 ### Phase 7: Simulator UI update
 
 **Files:** `src/simulator.md`
 
-- [ ] Update imports to new module paths
-- [ ] Update `wheelConfig` construction to use new `StrategyConfig` shape
-- [ ] Adapt trade log section to read from `signalLog` instead of `trades[]`
-  - Each `SignalLogEntry` has signal + events — richer than current `TradeRecord`
-- [ ] Adapt price chart cycle bands to read from signal log
-- [ ] Adapt inventory events to read from event log
-- [ ] Adapt cumulative P/L chart to use `dailyStates` (should be nearly identical)
-- [ ] **New: Signal log table** — show each decision with day, rule name, signal action, reason, before/after state. This is the key debuggability win.
+- [x] Update imports to new module paths
+- [x] Update `wheelConfig` construction to use new `StrategyConfig` shape
+- [x] Adapt price chart cycle bands to read from signal log
+- [x] Add signal markers on price chart (colored by signal type: SELL_PUT, SELL_CALL, SKIP, etc.)
+- [x] Adapt inventory events to read from event log
+- [x] Adapt cumulative P/L chart to use `dailyStates` (should be nearly identical)
+- [x] **New: State machine visualization** — live diagram showing the 4 phases (idle_cash, short_put, holding_eth, short_call) with the current phase highlighted. Updates reactively as the user scrubs through the detail view. Render as an inline SVG or Observable Plot with nodes and directed edges.
+- [x] **Updated: Trade log table** — replace current flat event rows with `signalLog`-based rows. Add **Rule** column (which rule produced the signal) and **Reason** column (why). Skipped cycles appear as visible `SKIP` rows instead of just a counter.
+  - Columns: #, Day, Rule, Signal, Strike, Spot, Delta, IV, Premium, Reason, dPNL, Total PNL
 
-### Phase 8: Verification
+### Phase 8: Unit tests
 
-- [ ] Run the simulator with identical parameters and compare output to the current implementation
-  - Same seed → same price path → same trades → same P/L (within floating point tolerance)
-- [ ] Verify Monte Carlo summary stats match
-- [ ] Remove old `wheel.ts` once verified
+**Files:** `tests/state.test.ts`, `tests/rules.test.ts`, `tests/strategy.test.ts`, `tests/executor.test.ts`, `tests/simulate.test.ts`
+
+Setup:
+
+- [x] Choose a lightweight test runner (Vitest — works with esbuild/TS out of the box, no config needed)
+- [x] Add `vitest` as devDependency, add `"test": "vitest run"` and `"test:watch": "vitest"` to package.json scripts
+
+State reducer (`tests/state.test.ts`):
+
+- [x] `applyEvents` with `OPTION_SOLD` → sets `openOption`, transitions phase to `short_put` / `short_call`
+- [x] `applyEvents` with `OPTION_EXPIRED` (OTM put) → clears `openOption`, phase back to `idle_cash`
+- [x] `applyEvents` with `OPTION_EXPIRED` (assigned put) + `ETH_BOUGHT` → phase to `holding_eth`, position set
+- [x] `applyEvents` with `OPTION_EXPIRED` (assigned call) + `ETH_SOLD` → phase to `idle_cash`, position cleared, P/L updated
+- [x] `applyEvents` with `PREMIUM_COLLECTED` → `totalPremiumCollected` incremented
+- [x] `applyEvents` with `CYCLE_SKIPPED` → `totalSkippedCycles` incremented
+- [x] `applyEvents` with `POSITION_CLOSED` → position cleared, phase to `idle_cash`, P/L updated
+- [x] `initialPortfolio()` → phase is `idle_cash`, all counters zero, no position, no option
+
+Rules (`tests/rules.test.ts`):
+
+- [x] `BasePutRule` returns `SELL_PUT` when phase is `idle_cash`
+- [x] `BasePutRule` returns `null` when phase is not `idle_cash`
+- [x] `AdaptiveCallRule` returns `SELL_CALL` when phase is `holding_eth`
+- [x] `AdaptiveCallRule` returns `null` when phase is not `holding_eth`
+- [x] `AdaptiveCallRule` delta scales with P/L: underwater → low delta, profitable → high delta
+- [x] `AdaptiveCallRule` falls back to `targetDelta` when adaptive config is absent
+- [x] `LowPremiumSkipRule` returns `SKIP` when net premium < threshold
+- [x] `LowPremiumSkipRule` returns `null` when premium is above threshold
+- [x] `LowPremiumSkipRule` returns `null` when phase is not `holding_eth`
+
+Strategy evaluator (`tests/strategy.test.ts`):
+
+- [x] `evaluateRules` returns first non-null signal in priority order
+- [x] `evaluateRules` returns `HOLD` when all rules return `null`
+- [x] Lower-priority rule (e.g., `SKIP` at 50) preempts higher-priority rule (e.g., `SELL_CALL` at 100)
+- [x] `isDecisionPoint` returns `true` when no open option
+- [x] `isDecisionPoint` returns `true` when open option has expired (day >= expiryDay)
+- [x] `isDecisionPoint` returns `false` mid-cycle
+
+Executor (`tests/executor.test.ts`):
+
+- [x] `SimExecutor.resolveExpiration` — put OTM: emits `OPTION_EXPIRED(assigned=false)` + `PREMIUM_COLLECTED`
+- [x] `SimExecutor.resolveExpiration` — put ITM: emits `OPTION_EXPIRED(assigned=true)` + `ETH_BOUGHT` + `PREMIUM_COLLECTED`
+- [x] `SimExecutor.resolveExpiration` — call OTM: emits `OPTION_EXPIRED(assigned=false)` + `PREMIUM_COLLECTED`
+- [x] `SimExecutor.resolveExpiration` — call ITM: emits `OPTION_EXPIRED(assigned=true)` + `ETH_SOLD` + `PREMIUM_COLLECTED`
+- [x] `SimExecutor.execute(SELL_PUT)` — emits `OPTION_SOLD` with correct premium (BS-priced, bid-ask adjusted)
+- [x] `SimExecutor.execute(SELL_CALL)` — same for calls
+- [x] `SimExecutor.execute(SKIP)` — emits `CYCLE_SKIPPED`
+- [x] `SimExecutor.execute(CLOSE_POSITION)` — emits `POSITION_CLOSED` + `ETH_SOLD` at spot
+- [x] `SimExecutor.execute(HOLD)` — emits no events
+
+Integration / regression (`tests/simulate.test.ts`):
+
+- [x] Full simulation with known seed produces deterministic output (snapshot test)
+- [x] Same seed + same config through new `simulate()` matches old `simulateWheel()` P/L within floating-point tolerance
+- [x] Monte Carlo summary stats (winRate, meanAPR) match between old and new for a small run count
+
+### Phase 9: Verification and cleanup
+
+- [x] Run full test suite, all green
+- [x] Run the simulator UI with identical parameters and visually confirm output matches pre-refactor
+- [x] Remove old `wheel.ts` once verified
 
 ## Output Contract: What the UI Consumes
 
