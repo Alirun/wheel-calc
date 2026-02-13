@@ -62,9 +62,9 @@ runMonteCarlo(market, config, numRuns)
   │       ├── signalLog: SignalLogEntry[] (every decision with before/after state)
   │       ├── dailyStates: DailyState[] (per-day portfolio snapshot)
   │       └── summary: { totalRealizedPL, totalPremiumCollected, totalAssignments, totalSkippedCycles }
-  │     → RunSummary (totalPL, apr, assignments, drawdown, ...)
+  │     → RunSummary (totalPL, apr, drawdown, benchmark, sharpe/sortino, regime, ...)
   ↓
-MonteCarloResult (winRate, APR distribution, mean P/L, mean drawdown)
+MonteCarloResult (winRate, APR distribution, mean P/L, drawdown, benchmark stats, risk-adjusted ratios, regime breakdown)
   ↓
 rerunSingle(market, config, selectedSeed) → detail view
 ```

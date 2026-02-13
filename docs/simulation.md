@@ -92,6 +92,17 @@ Both functions accept `StrategyConfig` (was `WheelConfig`) and internally call `
 | `fullCycles` | Count of call assignments (put→call→put completed), derived from `signalLog` |
 | `skippedCycles` | Count of SKIP signals |
 | `isWin` | totalPL > 0 |
+| `benchmarkPL` | (finalPrice - startPrice) * contracts |
+| `benchmarkAPR` | Same APR formula applied to benchmarkPL |
+| `benchmarkMaxDD` | Peak-to-trough of buy-and-hold P/L over the price series |
+| `sharpe` | Annualized Sharpe ratio: (mean(dailyReturns) - rf_daily) / std(dailyReturns) * sqrt(365) |
+| `sortino` | Annualized Sortino ratio: same as Sharpe but denominator uses only downside deviation (returns below rf) |
+| `benchmarkSharpe` | Sharpe ratio of the buy-and-hold daily returns |
+| `benchmarkSortino` | Sortino ratio of the buy-and-hold daily returns |
+| `regime` | `"bull"` / `"bear"` / `"sideways"` — classified by annualized underlying return (>+20%, <-20%, or in between) |
+| `underlyingReturn` | (finalPrice - startPrice) / startPrice |
+
+Daily returns for Sharpe/Sortino are computed as daily change in total P/L (realized + unrealized) divided by capital at risk. Benchmark daily returns use `(prices[i] - prices[i-1]) / prices[0]`.
 
 ### Aggregated Metrics (MonteCarloResult)
 
@@ -102,3 +113,21 @@ Both functions accept `StrategyConfig` (was `WheelConfig`) and internally call `
 | `p5APR`, `p25APR`, `p75APR`, `p95APR` | APR distribution percentiles |
 | `meanPL`, `medianPL` | P/L distribution |
 | `meanMaxDrawdown` | Average worst drawdown across runs |
+| `meanBenchmarkAPR`, `medianBenchmarkAPR` | Buy-and-hold APR distribution |
+| `meanBenchmarkPL` | Average buy-and-hold P/L |
+| `meanBenchmarkMaxDD` | Average buy-and-hold max drawdown |
+| `meanSharpe`, `meanSortino` | Average risk-adjusted ratios (wheel) |
+| `benchmarkMeanSharpe`, `benchmarkMeanSortino` | Average risk-adjusted ratios (buy-and-hold) |
+| `regimeBreakdown` | Per-regime stats: count, meanAPR, meanBenchmarkAPR, meanAlpha, meanSharpe, winRate, meanMaxDrawdown |
+
+### Regime Classification
+
+Each run is classified by the annualized return of the underlying price path:
+
+| Regime | Condition |
+|--------|-----------|
+| Bull | annualized return > +20% |
+| Bear | annualized return < -20% |
+| Sideways | between -20% and +20% |
+
+Annualized return = `underlyingReturn * (365 / days)`. This makes classification duration-independent.

@@ -111,6 +111,12 @@ const mc = runMonteCarlo(market, strategyConfig, marketParams.numSimulations);
 
 ## Monte Carlo Summary
 
+```js
+const alpha = mc.meanAPR - mc.meanBenchmarkAPR;
+```
+
+**Wheel Strategy**
+
 <div style="display:flex;flex-wrap:wrap;gap:0.75rem;">
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
     <h3 style="margin:0;font-size:0.75rem;">Win Rate</h3>
@@ -137,9 +143,56 @@ const mc = runMonteCarlo(market, strategyConfig, marketParams.numSimulations);
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
-    <h3 style="margin:0;font-size:0.75rem;">Mean Max Drawdown</h3>
+    <h3 style="margin:0;font-size:0.75rem;">Mean Max DD</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:#d62728">
       -$${mc.meanMaxDrawdown.toFixed(2)}
+    </p>
+  </div>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">Sharpe</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.meanSharpe >= 0 ? '#2ca02c' : '#d62728'}">
+      ${mc.meanSharpe.toFixed(2)}
+    </p>
+  </div>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">Sortino</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.meanSortino >= 0 ? '#2ca02c' : '#d62728'}">
+      ${mc.meanSortino.toFixed(2)}
+    </p>
+  </div>
+</div>
+
+**Buy & Hold Benchmark**
+
+<div style="display:flex;flex-wrap:wrap;gap:0.75rem;">
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">B&H Mean APR</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.meanBenchmarkAPR >= 0 ? '#2ca02c' : '#d62728'}">
+      ${mc.meanBenchmarkAPR >= 0 ? '+' : ''}${mc.meanBenchmarkAPR.toFixed(1)}%
+    </p>
+  </div>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">B&H Mean P/L</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.meanBenchmarkPL >= 0 ? '#2ca02c' : '#d62728'}">
+      ${mc.meanBenchmarkPL >= 0 ? '+' : ''}$${mc.meanBenchmarkPL.toFixed(2)}
+    </p>
+  </div>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">B&H Mean Max DD</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:#d62728">
+      -$${mc.meanBenchmarkMaxDD.toFixed(2)}
+    </p>
+  </div>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">B&H Sharpe</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.benchmarkMeanSharpe >= 0 ? '#2ca02c' : '#d62728'}">
+      ${mc.benchmarkMeanSharpe.toFixed(2)}
+    </p>
+  </div>
+  <div class="card" style="padding:0.5rem 1rem;min-width:0;border:2px solid ${alpha >= 0 ? '#2ca02c' : '#d62728'}">
+    <h3 style="margin:0;font-size:0.75rem;">Alpha (Wheel − B&H)</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${alpha >= 0 ? '#2ca02c' : '#d62728'}">
+      ${alpha >= 0 ? '+' : ''}${alpha.toFixed(1)}%
     </p>
   </div>
 </div>
@@ -155,18 +208,20 @@ const loseRuns = mc.runs.filter((r) => !r.isWin);
   <div class="card">
     ${resize((width) =>
       Plot.plot({
-        title: "APR Distribution",
+        title: "APR Distribution: Wheel vs Buy & Hold",
         width,
         height: 260,
         x: {label: "APR (%)", grid: true},
         y: {label: "Count"},
         marks: [
+          Plot.rectY(mc.runs, Plot.binX({y: "count"}, {x: "benchmarkAPR", fill: "#ff7f0e", fillOpacity: 0.35})),
           Plot.rectY(winRuns, Plot.binX({y: "count"}, {x: "apr", fill: "#2ca02c", fillOpacity: 0.7})),
           Plot.rectY(loseRuns, Plot.binX({y: "count"}, {x: "apr", fill: "#d62728", fillOpacity: 0.7})),
           Plot.ruleX([0], {stroke: "#333", strokeDasharray: "4,4"})
         ]
       })
     )}
+    <p style="margin:0.25rem 0 0"><small><span style="color:#2ca02c">&#9632;</span> Wheel (win) &nbsp; <span style="color:#d62728">&#9632;</span> Wheel (loss) &nbsp; <span style="color:#ff7f0e">&#9632;</span> Buy & Hold</small></p>
   </div>
   <div class="card">
     ${resize((width) =>
@@ -186,13 +241,46 @@ const loseRuns = mc.runs.filter((r) => !r.isWin);
   </div>
 </div>
 
+## Performance by Regime
+
+```js
+const regimeRows = mc.regimeBreakdown.map((rb) => ({
+  Regime: rb.regime === "bull" ? "Bull (>+20%)" : rb.regime === "bear" ? "Bear (<-20%)" : "Sideways",
+  Runs: rb.count,
+  "Wheel APR": rb.meanAPR,
+  "B&H APR": rb.meanBenchmarkAPR,
+  Alpha: rb.meanAlpha,
+  Sharpe: rb.meanSharpe,
+  "Win Rate": rb.winRate,
+  "Mean Max DD": -rb.meanMaxDrawdown
+}));
+```
+
+<div style="max-width:none">
+  ${Inputs.table(regimeRows, {
+    layout: "auto",
+    format: {
+      "Wheel APR": (d) => `${d >= 0 ? "+" : ""}${d.toFixed(1)}%`,
+      "B&H APR": (d) => `${d >= 0 ? "+" : ""}${d.toFixed(1)}%`,
+      Alpha: (d) => `${d >= 0 ? "+" : ""}${d.toFixed(1)}%`,
+      Sharpe: (d) => d.toFixed(2),
+      "Win Rate": (d) => `${(d * 100).toFixed(1)}%`,
+      "Mean Max DD": (d) => `$${d.toFixed(2)}`
+    }
+  })}
+</div>
+
 ## Simulation Runs
 
 ```js
 const runsTable = mc.runs.map((r) => ({
   Seed: r.seed,
+  Regime: r.regime,
   "Total P/L": r.totalPL,
   "APR (%)": r.apr,
+  "B&H P/L": r.benchmarkPL,
+  "Alpha": r.apr - r.benchmarkAPR,
+  Sharpe: r.sharpe,
   Premiums: r.premiumCollected,
   Assignments: r.assignments,
   Cycles: r.fullCycles,
@@ -210,6 +298,9 @@ const runsTable = mc.runs.map((r) => ({
     format: {
       "Total P/L": (d) => `${d >= 0 ? "+" : ""}$${d.toFixed(2)}`,
       "APR (%)": (d) => `${d >= 0 ? "+" : ""}${d.toFixed(1)}%`,
+      "B&H P/L": (d) => `${d >= 0 ? "+" : ""}$${d.toFixed(2)}`,
+      "Alpha": (d) => `${d >= 0 ? "+" : ""}${d.toFixed(1)}%`,
+      Sharpe: (d) => d.toFixed(2),
       Premiums: (d) => `$${d.toFixed(2)}`,
       "Max DD": (d) => `$${d.toFixed(2)}`
     }

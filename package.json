@@ -16,6 +16,7 @@
     "d3-time-format": "^4.1.0"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
     "rimraf": "^5.0.5",
     "vitest": "^4.0.18"
   },

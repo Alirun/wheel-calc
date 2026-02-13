@@ -10,12 +10,14 @@ npm run build    # Production build to dist/
 npm run clean    # Clear Observable cache (src/.observablehq/cache)
 ```
 
-No test framework, no linter, no tsconfig. TypeScript is compiled by Observable Framework's bundler (esbuild).
+Tests use Vitest (`npx vitest run`). Coverage via `npx vitest run --coverage`. No linter, no tsconfig. TypeScript is compiled by Observable Framework's bundler (esbuild).
 
 ## Key Rules
 
 - **Computation modules (`src/components/*.ts`) must be pure TypeScript with zero framework imports.** They must remain portable to a future production execution engine.
 - **Seeded PRNG everywhere.** Same seed = same prices = reproducible simulation.
+- **Tests are required.** Every change to computation modules must include or update tests in `tests/`. Export pure helper functions so they can be tested directly. Run `npx vitest run` before considering work complete.
+- **Maintain high coverage.** Target ≥95% statement coverage on `src/components/`. Run `npx vitest run --coverage` to verify. If new code drops coverage, add tests to compensate.
 
 ## Skills
 
