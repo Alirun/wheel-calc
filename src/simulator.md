@@ -464,7 +464,7 @@ const assignments = selectedResult.signalLog.flatMap((entry) =>
       height: 400,
       x: {label: "Day"},
       y: {label: "Price (USD)", grid: true},
-      color: {legend: true},
+      color: {legend: false},
       marks: [
         ...cycleBands.map((b) =>
           Plot.rectY([b], {
@@ -497,11 +497,13 @@ const assignments = selectedResult.signalLog.flatMap((entry) =>
           fill: (d) => ({
             SELL_PUT: "#d62728",
             SELL_CALL: "#1f77b4",
-            SKIP: "#ff7f0e",
-            CLOSE_POSITION: "#9467bd",
-            ROLL: "#8c564b"
+            SKIP: "#999",
+            CLOSE_POSITION: "#000",
+            ROLL: "#ff7f0e"
           })[d.action] ?? "#999",
-          r: 4,
+          stroke: "white",
+          strokeWidth: 1.5,
+          r: 5,
           symbol: "circle",
           tip: true,
           title: (d) => `${d.action} (${d.rule}) @ day ${d.day}`
@@ -509,8 +511,10 @@ const assignments = selectedResult.signalLog.flatMap((entry) =>
         Plot.dot(assignments, {
           x: "day",
           y: "price",
-          fill: (d) => d.type === "put" ? "#d62728" : "#1f77b4",
-          r: 6,
+          fill: "none",
+          stroke: (d) => d.type === "put" ? "#d62728" : "#1f77b4",
+          strokeWidth: 2.5,
+          r: 8,
           symbol: "diamond2",
           tip: true,
           title: (d) => `${d.type.toUpperCase()} assigned @ day ${d.day}`
@@ -523,9 +527,9 @@ const assignments = selectedResult.signalLog.flatMap((entry) =>
 <p><small>
   <span style="color:#d62728">&#9679;</span> Sell Put &nbsp;
   <span style="color:#1f77b4">&#9679;</span> Sell Call &nbsp;
-  <span style="color:#ff7f0e">&#9679;</span> Skip &nbsp;
-  <span style="color:#d62728">&#9670;</span> Put Assigned &nbsp;
-  <span style="color:#1f77b4">&#9670;</span> Call Assigned
+  <span style="color:#999">&#9679;</span> Skip &nbsp;
+  <span style="color:#d62728">&#9671;</span> Put Assigned &nbsp;
+  <span style="color:#1f77b4">&#9671;</span> Call Assigned
 </small></p>
 
 ### Inventory & Unrealized P/L
