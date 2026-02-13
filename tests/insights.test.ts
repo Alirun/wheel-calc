@@ -217,40 +217,52 @@ describe("generateInsights", () => {
     });
   });
 
-  describe("assignment rate", () => {
-    it("warns for high assignment rate (>50%)", () => {
-      const runs = [makeRun({assignments: 4, fullCycles: 5})];
+  describe("assignment frequency", () => {
+    it("warns when assignments per cycle ratio is high (>3)", () => {
+      // 10 assignments / 2 fullCycles = 5.0 ratio → many incomplete cycles
+      const runs = [makeRun({assignments: 10, fullCycles: 2})];
       const insights = generateInsights(makeMC({runs}), baseConfig);
-      const i = findInsight(insights, "High Assignment Rate");
+      const i = findInsight(insights, "High Assignment Frequency");
       expect(i).toBeDefined();
       expect(i!.level).toBe("warning");
       expect(i!.suggestion).toContain("delta");
     });
 
-    it("returns neutral for moderate assignment rate (30-50%)", () => {
-      const runs = [makeRun({assignments: 2, fullCycles: 5})];
+    it("returns neutral for moderate assignment activity", () => {
+      // 4 assignments / 2 fullCycles = 2.0 ratio, and >= 3 mean assignments
+      const runs = [makeRun({assignments: 4, fullCycles: 2})];
       const insights = generateInsights(makeMC({runs}), baseConfig);
-      const i = findInsight(insights, "Moderate Assignment Rate");
+      const i = findInsight(insights, "Assignment Activity");
       expect(i).toBeDefined();
       expect(i!.level).toBe("neutral");
     });
 
-    it("does not fire for low assignment rate", () => {
-      const runs = [makeRun({assignments: 1, fullCycles: 10})];
+    it("does not fire for very low assignment counts", () => {
+      const runs = [makeRun({assignments: 2, fullCycles: 1})];
       const insights = generateInsights(makeMC({runs}), baseConfig);
-      expect(findInsight(insights, "High Assignment Rate")).toBeUndefined();
-      expect(findInsight(insights, "Moderate Assignment Rate")).toBeUndefined();
+      expect(findInsight(insights, "High Assignment Frequency")).toBeUndefined();
+      expect(findInsight(insights, "Assignment Activity")).toBeUndefined();
+    });
+
+    it("does not fire warning when ratio is high but activity is low", () => {
+      // ratio = 2/0.5 = 4 > 3, but mean assignments < 3 so skip
+      const runs = [
+        makeRun({assignments: 3, fullCycles: 1}),
+        makeRun({assignments: 1, fullCycles: 0}),
+      ];
+      const insights = generateInsights(makeMC({runs}), baseConfig);
+      expect(findInsight(insights, "High Assignment Frequency")).toBeUndefined();
     });
 
     it("handles zero cycles gracefully", () => {
       const runs = [makeRun({assignments: 0, fullCycles: 0})];
       const insights = generateInsights(makeMC({runs}), baseConfig);
-      expect(findInsight(insights, "High Assignment Rate")).toBeUndefined();
+      expect(findInsight(insights, "High Assignment Frequency")).toBeUndefined();
     });
 
     it("handles empty runs", () => {
       const insights = generateInsights(makeMC({runs: []}), baseConfig);
-      expect(findInsight(insights, "High Assignment Rate")).toBeUndefined();
+      expect(findInsight(insights, "High Assignment Frequency")).toBeUndefined();
     });
   });
 
@@ -259,7 +271,7 @@ describe("generateInsights", () => {
       const mc = makeMC({
         meanSharpe: -0.3, meanSortino: -0.25, benchmarkMeanSharpe: 0.5,
         meanAPR: 2, meanBenchmarkAPR: 12, winRate: 0.35,
-        runs: [makeRun({assignments: 5, fullCycles: 8})],
+        runs: [makeRun({assignments: 10, fullCycles: 2})],
         regimeBreakdown: [
           makeRegime({regime: "bull", count: 5, meanAlpha: -15}),
           makeRegime({regime: "bear", count: 3, meanAlpha: 5}),
@@ -273,7 +285,7 @@ describe("generateInsights", () => {
       expect(findInsight(insights, "High Downside Volatility")).toBeDefined();
       expect(findInsight(insights, "Weak in Bull Regimes")).toBeDefined();
       expect(findInsight(insights, "Low Win Rate")).toBeDefined();
-      expect(findInsight(insights, "High Assignment Rate")).toBeDefined();
+      expect(findInsight(insights, "High Assignment Frequency")).toBeDefined();
     });
 
     it("generates positive insights for a strong strategy", () => {

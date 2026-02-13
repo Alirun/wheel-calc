@@ -141,25 +141,30 @@ function evaluateRisk(mc: MonteCarloResult, config: StrategyConfig, insights: In
 function evaluateAssignmentRate(mc: MonteCarloResult, insights: Insight[]): void {
   if (mc.runs.length === 0) return;
 
-  const totalAssignments = mc.runs.reduce((sum, r) => sum + r.assignments, 0);
-  const totalCycles = mc.runs.reduce((sum, r) => sum + r.fullCycles, 0);
+  const meanAssignments = mc.runs.reduce((sum, r) => sum + r.assignments, 0) / mc.runs.length;
+  const meanFullCycles = mc.runs.reduce((sum, r) => sum + r.fullCycles, 0) / mc.runs.length;
 
-  if (totalCycles === 0) return;
+  if (meanFullCycles === 0 || meanAssignments < 3) return;
 
-  const assignmentRate = totalAssignments / totalCycles;
+  // Each full cycle requires exactly one put assignment + one call assignment.
+  // Assignments beyond 2 * fullCycles indicate incomplete cycles (put assigned
+  // but simulation ended before call assignment).
+  // A ratio near 2.0 means nearly every put assignment completes the cycle.
+  // A ratio well above 2.0 means many puts assign without completing.
+  const assignmentsPerCycle = meanAssignments / meanFullCycles;
 
-  if (assignmentRate > 0.5) {
+  if (assignmentsPerCycle > 3) {
     insights.push({
       level: "warning",
-      title: "High Assignment Rate",
-      message: `${(assignmentRate * 100).toFixed(0)}% of cycles end in assignment — options are frequently ITM at expiry.`,
-      suggestion: "Consider lowering target delta to reduce assignment frequency."
+      title: "High Assignment Frequency",
+      message: `Average ${meanAssignments.toFixed(1)} assignments across ${meanFullCycles.toFixed(1)} completed cycles per simulation — many puts assign without completing a full wheel cycle.`,
+      suggestion: "Consider lowering target delta to reduce put assignment frequency."
     });
-  } else if (assignmentRate > 0.3) {
+  } else if (meanAssignments >= 2) {
     insights.push({
       level: "neutral",
-      title: "Moderate Assignment Rate",
-      message: `${(assignmentRate * 100).toFixed(0)}% of cycles end in assignment.`
+      title: "Assignment Activity",
+      message: `Average ${meanAssignments.toFixed(1)} assignments and ${meanFullCycles.toFixed(1)} completed wheel cycles per simulation.`
     });
   }
 }

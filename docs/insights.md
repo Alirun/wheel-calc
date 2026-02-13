@@ -91,17 +91,19 @@ For each regime in `regimeBreakdown` where `count > 0` and `meanAlpha < -10`:
 
 Capital at risk is estimated from benchmark metrics: `|meanBenchmarkPL / (meanBenchmarkAPR / 100)|`.
 
-### 6. Assignment Rate (fires at most one)
+### 6. Assignment Frequency (fires at most one)
 
-Assignment rate = total assignments / total full cycles across all runs.
+Computes mean assignments and mean full cycles per run. Each completed wheel cycle requires exactly one put assignment + one call assignment, so a healthy `assignments / fullCycles` ratio is near 2.0. A ratio well above 2.0 means many puts assign without the simulation completing the full put→call→cash cycle.
 
 | Condition | Level | Title |
 |-----------|-------|-------|
-| `rate > 0.5` | warning | High Assignment Rate |
-| `0.3 < rate <= 0.5` | neutral | Moderate Assignment Rate |
-| `rate <= 0.3` | — | No insight |
+| `meanAssignments >= 3 && meanFullCycles > 0 && assignmentsPerCycle > 3` | warning | High Assignment Frequency |
+| `meanAssignments >= 3 && meanFullCycles > 0 && meanAssignments >= 2` | neutral | Assignment Activity |
+| otherwise | — | No insight |
 
-Silently skipped when there are zero runs or zero cycles.
+Silently skipped when there are zero runs, zero full cycles, or fewer than 3 mean assignments (too little activity for the ratio to be meaningful).
+
+Note: `RunSummary` does not expose total option expirations, so a traditional "assignment rate %" cannot be computed. This rule uses the ratio of raw counts instead.
 
 ## UI Rendering
 
