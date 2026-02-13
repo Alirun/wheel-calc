@@ -505,7 +505,6 @@ const assignments = selectedResult.signalLog.flatMap((entry) =>
           strokeWidth: 1.5,
           r: 5,
           symbol: "circle",
-          tip: true,
           title: (d) => `${d.action} (${d.rule}) @ day ${d.day}`
         }),
         Plot.dot(assignments, {
@@ -516,7 +515,6 @@ const assignments = selectedResult.signalLog.flatMap((entry) =>
           strokeWidth: 2.5,
           r: 8,
           symbol: "diamond2",
-          tip: true,
           title: (d) => `${d.type.toUpperCase()} assigned @ day ${d.day}`
         })
       ]
