@@ -15,6 +15,7 @@ Pure TypeScript modules. No framework imports. Designed for reuse in a productio
 black-scholes.ts       ← option pricing, delta, strike-finding (zero deps)
 price-gen.ts           ← seeded GBM price series (zero deps)
 monte-carlo.ts         ← MC runner (imports price-gen, strategy/)
+insights.ts            ← insight engine: evaluates MC results into actionable observations (imports monte-carlo, strategy/types)
 deribit.ts             ← Deribit public API fetch wrappers (zero deps)
 strategy/
   types.ts             ← Signal, Event, MarketSnapshot, PortfolioState, Phase, Config
@@ -32,6 +33,7 @@ monte-carlo → strategy/simulate → strategy/strategy → strategy/rules → b
                                 → strategy/executor → black-scholes (via rules)
                                 → strategy/state
             → price-gen
+insights → monte-carlo (types only), strategy/types (types only)
 deribit (standalone)
 ```
 
@@ -65,6 +67,7 @@ runMonteCarlo(market, config, numRuns)
   │     → RunSummary (totalPL, apr, drawdown, benchmark, sharpe/sortino, regime, ...)
   ↓
 MonteCarloResult (winRate, APR distribution, mean P/L, drawdown, benchmark stats, risk-adjusted ratios, regime breakdown)
+  ├─→ generateInsights(mc, config) → Insight[] (actionable observations with suggestions)
   ↓
 rerunSingle(market, config, selectedSeed) → detail view
 ```

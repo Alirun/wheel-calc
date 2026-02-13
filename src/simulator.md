@@ -10,6 +10,7 @@ Generate random ETH price series and Monte Carlo the Wheel strategy across many 
 ```js
 import {runMonteCarlo, rerunSingle} from "./components/monte-carlo.js";
 import {defaultRules} from "./components/strategy/rules.js";
+import {generateInsights} from "./components/insights.js";
 ```
 
 <div class="grid grid-cols-3">
@@ -195,6 +196,23 @@ const alpha = mc.meanAPR - mc.meanBenchmarkAPR;
       ${alpha >= 0 ? '+' : ''}${alpha.toFixed(1)}%
     </p>
   </div>
+</div>
+
+```js
+const insightColors = {positive: "#2ca02c", neutral: "#888", warning: "#e68a00", negative: "#d62728"};
+const insights = generateInsights(mc, strategyConfig);
+```
+
+**Insights**
+
+<div style="display:flex;flex-direction:column;gap:0.5rem;">
+  ${insights.map((i) => html`
+    <div class="card" style="padding:0.5rem 1rem;border-left:4px solid ${insightColors[i.level]};">
+      <strong>${i.title}</strong>
+      <div style="font-size:0.85rem;margin-top:0.15rem">${i.message}</div>
+      ${i.suggestion ? html`<div style="font-size:0.8rem;color:var(--theme-foreground-muted);margin-top:0.25rem">${i.suggestion}</div>` : ""}
+    </div>
+  `)}
 </div>
 
 ## Outcome Distribution
