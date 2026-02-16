@@ -14,6 +14,7 @@ export function simulate(
   prices: number[],
   rules: Rule[],
   config: StrategyConfig,
+  ivPath?: number[],
 ): SimulationResult {
   let portfolio = initialPortfolio();
   const executor = new SimExecutor();
@@ -21,7 +22,7 @@ export function simulate(
   const dailyStates: DailyState[] = [];
 
   for (let day = 0; day < prices.length; day++) {
-    const market: MarketSnapshot = {day, spot: prices[day]};
+    const market: MarketSnapshot = {day, spot: prices[day], iv: ivPath?.[day]};
 
     if (isDecisionPoint(day, portfolio)) {
       const before = snapshotPortfolio(portfolio);

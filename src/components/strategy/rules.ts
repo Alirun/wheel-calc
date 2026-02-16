@@ -28,12 +28,13 @@ const basePutRule: Rule = {
     if (portfolio.phase !== "idle_cash") return null;
 
     const T = config.cycleLengthDays / 365;
+    const vol = market.iv ?? config.impliedVol;
     const strike = findStrikeForDelta(
-      config.targetDelta, market.spot, T, config.riskFreeRate, config.impliedVol, "put",
+      config.targetDelta, market.spot, T, config.riskFreeRate, vol, "put",
     );
-    const rawPremium = bsPutPrice(market.spot, strike, T, config.riskFreeRate, config.impliedVol);
+    const rawPremium = bsPutPrice(market.spot, strike, T, config.riskFreeRate, vol);
     const premium = rawPremium * (1 - config.bidAskSpreadPct);
-    const delta = bsPutDelta(market.spot, strike, T, config.riskFreeRate, config.impliedVol);
+    const delta = bsPutDelta(market.spot, strike, T, config.riskFreeRate, vol);
 
     return {
       action: "SELL_PUT",
@@ -65,13 +66,14 @@ const adaptiveCallRule: Rule = {
     if (portfolio.phase !== "holding_eth") return null;
 
     const T = config.cycleLengthDays / 365;
+    const vol = market.iv ?? config.impliedVol;
     const effectiveDelta = computeCallDelta(market, portfolio, config);
     const strike = findStrikeForDelta(
-      effectiveDelta, market.spot, T, config.riskFreeRate, config.impliedVol, "call",
+      effectiveDelta, market.spot, T, config.riskFreeRate, vol, "call",
     );
-    const rawPremium = bsCallPrice(market.spot, strike, T, config.riskFreeRate, config.impliedVol);
+    const rawPremium = bsCallPrice(market.spot, strike, T, config.riskFreeRate, vol);
     const premium = rawPremium * (1 - config.bidAskSpreadPct);
-    const delta = bsCallDelta(market.spot, strike, T, config.riskFreeRate, config.impliedVol);
+    const delta = bsCallDelta(market.spot, strike, T, config.riskFreeRate, vol);
 
     return {
       action: "SELL_CALL",
@@ -94,11 +96,12 @@ const lowPremiumSkipRule: Rule = {
     if (!config.adaptiveCalls || !portfolio.position) return null;
 
     const T = config.cycleLengthDays / 365;
+    const vol = market.iv ?? config.impliedVol;
     const effectiveDelta = computeCallDelta(market, portfolio, config);
     const strike = findStrikeForDelta(
-      effectiveDelta, market.spot, T, config.riskFreeRate, config.impliedVol, "call",
+      effectiveDelta, market.spot, T, config.riskFreeRate, vol, "call",
     );
-    const rawPremium = bsCallPrice(market.spot, strike, T, config.riskFreeRate, config.impliedVol);
+    const rawPremium = bsCallPrice(market.spot, strike, T, config.riskFreeRate, vol);
     const premium = rawPremium * (1 - config.bidAskSpreadPct);
 
     const netPremium = premium * config.contracts - config.feePerTrade * config.contracts;

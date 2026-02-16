@@ -107,6 +107,38 @@ describe("AdaptiveCallRule", () => {
   });
 });
 
+describe("market.iv override", () => {
+  it("BasePutRule uses market.iv over config.impliedVol", () => {
+    const rule = findRule("BasePutRule");
+    const p = initialPortfolio();
+    const marketWithIv: MarketSnapshot = {day: 0, spot: 2500, iv: 1.5};
+    const sig1 = rule.evaluate(marketWithIv, p, baseConfig)!;
+    const sig2 = rule.evaluate(market, p, baseConfig)!;
+    expect(sig1.action).toBe("SELL_PUT");
+    expect(sig2.action).toBe("SELL_PUT");
+    if (sig1.action === "SELL_PUT" && sig2.action === "SELL_PUT") {
+      expect(sig1.premium).not.toBeCloseTo(sig2.premium, 2);
+    }
+  });
+
+  it("AdaptiveCallRule uses market.iv over config.impliedVol", () => {
+    const rule = findRule("AdaptiveCallRule");
+    const p: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "holding_eth",
+      position: {size: 1, entryPrice: 2400},
+    };
+    const marketWithIv: MarketSnapshot = {day: 0, spot: 2500, iv: 1.5};
+    const sig1 = rule.evaluate(marketWithIv, p, baseConfig)!;
+    const sig2 = rule.evaluate(market, p, baseConfig)!;
+    expect(sig1.action).toBe("SELL_CALL");
+    expect(sig2.action).toBe("SELL_CALL");
+    if (sig1.action === "SELL_CALL" && sig2.action === "SELL_CALL") {
+      expect(sig1.premium).not.toBeCloseTo(sig2.premium, 2);
+    }
+  });
+});
+
 describe("LowPremiumSkipRule", () => {
   const rule = findRule("LowPremiumSkipRule");
 

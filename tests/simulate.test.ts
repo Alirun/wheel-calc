@@ -11,7 +11,7 @@ const config: StrategyConfig = {
 };
 
 function makePrices(seed: number, days: number) {
-  return generatePrices({startPrice: 2500, days, annualVol: 0.80, annualDrift: 0, seed});
+  return generatePrices({startPrice: 2500, days, annualVol: 0.80, annualDrift: 0, seed}).prices;
 }
 
 describe("simulate", () => {
@@ -85,5 +85,22 @@ describe("simulate", () => {
     const prices = makePrices(1, 3);
     const result = simulate(prices, defaultRules(), config);
     expect(result.dailyStates.length).toBe(3);
+  });
+
+  it("populates market.iv from ivPath when provided", () => {
+    const prices = makePrices(1, 30);
+    const ivPath = prices.map(() => 0.75);
+    const result = simulate(prices, defaultRules(), config, ivPath);
+    for (const entry of result.signalLog) {
+      expect(entry.market.iv).toBe(0.75);
+    }
+  });
+
+  it("market.iv is undefined when ivPath not provided", () => {
+    const prices = makePrices(1, 30);
+    const result = simulate(prices, defaultRules(), config);
+    for (const entry of result.signalLog) {
+      expect(entry.market.iv).toBeUndefined();
+    }
   });
 });

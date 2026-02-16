@@ -204,4 +204,38 @@ describe("runMonteCarlo integration", () => {
     expect(mc1.meanBenchmarkAPR).toBe(mc2.meanBenchmarkAPR);
     expect(mc1.regimeBreakdown).toEqual(mc2.regimeBreakdown);
   });
+
+  it("works with heston model", () => {
+    const hestonMarket = {
+      ...market,
+      model: "heston" as const,
+      heston: {kappa: 2.0, theta: 0.64, sigma: 0.5, rho: -0.7},
+    };
+    const mc = runMonteCarlo(hestonMarket, config, 5);
+    expect(mc.runs.length).toBe(5);
+    expect(mc.runs.every((r) => !isNaN(r.totalPL))).toBe(true);
+  });
+
+  it("works with jump model", () => {
+    const jumpMarket = {
+      ...market,
+      model: "jump" as const,
+      jump: {lambda: 10, muJ: 0, sigmaJ: 0.05},
+    };
+    const mc = runMonteCarlo(jumpMarket, config, 5);
+    expect(mc.runs.length).toBe(5);
+    expect(mc.runs.every((r) => !isNaN(r.totalPL))).toBe(true);
+  });
+
+  it("works with heston-jump model", () => {
+    const hjMarket = {
+      ...market,
+      model: "heston-jump" as const,
+      heston: {kappa: 2.0, theta: 0.64, sigma: 0.5, rho: -0.7},
+      jump: {lambda: 10, muJ: 0, sigmaJ: 0.05},
+    };
+    const mc = runMonteCarlo(hjMarket, config, 5);
+    expect(mc.runs.length).toBe(5);
+    expect(mc.runs.every((r) => !isNaN(r.totalPL))).toBe(true);
+  });
 });

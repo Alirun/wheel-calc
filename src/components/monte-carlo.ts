@@ -1,4 +1,5 @@
 import {generatePrices} from "./price-gen.js";
+import type {PriceModel, HestonParams, JumpParams} from "./price-gen.js";
 import {simulate} from "./strategy/simulate.js";
 import {defaultRules} from "./strategy/rules.js";
 import type {StrategyConfig, SimulationResult, SignalLogEntry} from "./strategy/types.js";
@@ -8,6 +9,9 @@ export interface MarketParams {
   days: number;
   annualVol: number;
   annualDrift: number;
+  model?: PriceModel;
+  heston?: HestonParams;
+  jump?: JumpParams;
 }
 
 export interface RunSummary {
@@ -228,15 +232,18 @@ export function runMonteCarlo(
   const runs: RunSummary[] = [];
 
   for (let seed = 1; seed <= numRuns; seed++) {
-    const prices = generatePrices({
+    const {prices, ivPath} = generatePrices({
       startPrice: market.startPrice,
       days: market.days,
       annualVol: market.annualVol,
       annualDrift: market.annualDrift,
       seed,
+      model: market.model,
+      heston: market.heston,
+      jump: market.jump,
     });
 
-    const result = simulate(prices, rules, config);
+    const result = simulate(prices, rules, config, ivPath);
     runs.push(summarizeRun(seed, result, prices, capitalAtRisk, yearsElapsed, rfAnnual, config.contracts));
   }
 
@@ -299,14 +306,17 @@ export function rerunSingle(
   config: StrategyConfig,
   seed: number,
 ): {prices: number[]; result: SimulationResult} {
-  const prices = generatePrices({
+  const {prices, ivPath} = generatePrices({
     startPrice: market.startPrice,
     days: market.days,
     annualVol: market.annualVol,
     annualDrift: market.annualDrift,
     seed,
+    model: market.model,
+    heston: market.heston,
+    jump: market.jump,
   });
   const rules = defaultRules();
-  const result = simulate(prices, rules, config);
+  const result = simulate(prices, rules, config, ivPath);
   return {prices, result};
 }

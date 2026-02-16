@@ -23,8 +23,30 @@ const marketParams = view(Inputs.form({
   days: Inputs.range([30, 365], {value: 30, step: 1, label: "Days to simulate"}),
   annualVol: Inputs.range([10, 200], {value: 80, step: 5, label: "Annual volatility (%)"}),
   annualDrift: Inputs.range([-100, 100], {value: 0, step: 5, label: "Annual drift (%)"}),
-  numSimulations: Inputs.range([10, 2000], {value: 200, step: 10, label: "Simulations"})
+  numSimulations: Inputs.range([10, 2000], {value: 200, step: 10, label: "Simulations"}),
+  model: Inputs.select(["gbm", "heston", "jump", "heston-jump"], {value: "gbm", label: "Price model"})
 }));
+```
+
+```js
+const hestonParams = marketParams.model === "heston" || marketParams.model === "heston-jump"
+  ? view(Inputs.form({
+      kappa: Inputs.range([0.5, 10], {value: 2.0, step: 0.1, label: "κ (mean-reversion speed)"}),
+      theta: Inputs.range([0.04, 2.0], {value: 0.64, step: 0.01, label: "θ (long-run variance)"}),
+      sigma: Inputs.range([0.1, 2.0], {value: 0.5, step: 0.05, label: "ξ (vol-of-vol)"}),
+      rho: Inputs.range([-0.99, 0.99], {value: -0.7, step: 0.05, label: "ρ (correlation)"})
+    }))
+  : null;
+```
+
+```js
+const jumpParams = marketParams.model === "jump" || marketParams.model === "heston-jump"
+  ? view(Inputs.form({
+      lambda: Inputs.range([0, 50], {value: 10, step: 1, label: "λ (jumps/year)"}),
+      muJ: Inputs.range([-0.2, 0.2], {value: 0, step: 0.01, label: "μJ (mean jump size)"}),
+      sigmaJ: Inputs.range([0.01, 0.3], {value: 0.05, step: 0.01, label: "σJ (jump vol)"})
+    }))
+  : null;
 ```
 
 <hr style="margin:0.5rem 0;border:0;border-top:1px solid var(--theme-foreground-faintest)">
@@ -87,7 +109,10 @@ const market = {
   startPrice: marketParams.startPrice,
   days: marketParams.days,
   annualVol: annualVol,
-  annualDrift: marketParams.annualDrift / 100
+  annualDrift: marketParams.annualDrift / 100,
+  model: marketParams.model,
+  ...(hestonParams ? {heston: hestonParams} : {}),
+  ...(jumpParams ? {jump: jumpParams} : {})
 };
 
 const strategyConfig = {
