@@ -48,11 +48,11 @@
 
 ### High Impact
 - [ ] **IV vs RV spread as a trading signal** — When IV >> RV, premiums are "rich" — sell more aggressively. When IV ~ RV, premiums are "fair" — be selective. Currently `ivPremiumPct` is static; this should be dynamic per-cycle.
-- [ ] **Stochastic volatility model (Heston/SABR)** — Replace constant-vol GBM with mean-reverting, clustered vol. Real crypto vol exhibits these properties. Would make Monte Carlo results more realistic.
+- [x] **Stochastic volatility model (Heston/SABR)** — Replace constant-vol GBM with mean-reverting, clustered vol. Real crypto vol exhibits these properties. Would make Monte Carlo results more realistic.
 
 ### Medium Impact
 - [ ] **Volatility term structure** — Model different IVs for different DTEs. A 7-day and a 30-day option don't share the same vol. Improves strike/DTE selection accuracy.
-- [ ] **Jump diffusion model** — Add a Poisson jump process to GBM for fat-tail events (sudden crashes/pumps). Better models tail risk and gives more realistic drawdown estimates.
+- [x] **Jump diffusion model** — Add a Poisson jump process to GBM for fat-tail events (sudden crashes/pumps). Better models tail risk and gives more realistic drawdown estimates.
 
 ---
 
@@ -122,11 +122,11 @@ Kelly needs return-on-capital as an input. Capital efficiency tracking provides 
 
 Completed: baseline metrics, benchmark comparison, risk-adjusted ratios, and regime breakdown all implemented in `monte-carlo.ts` and `simulator.md`.
 
-#### Phase 1: Better Price Model
-- **4.2** Stochastic volatility (Heston)
-- **4.4** Jump diffusion
+#### Phase 1: Better Price Model ✅
+- [x] **4.2** Stochastic volatility (Heston)
+- [x] **4.4** Jump diffusion
 
-Why next: every subsequent improvement depends on realistic price paths. Test by comparing generated return distributions against historical ETH data (fat tails, vol clustering).
+Completed: Heston QE scheme, Merton jump diffusion, and combined heston-jump model implemented in `price-gen.ts`. IV path threaded through `monte-carlo.ts` → `simulate.ts` → `rules.ts`. Model selector + parameter inputs added to `simulator.md`.
 
 #### Phase 2: Core Strategy Improvements
 - **2.2** Minimum strike at cost-basis (simple guard, high value)

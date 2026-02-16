@@ -161,10 +161,22 @@ Uses binary search (`findStrikeForDelta`) to find the strike producing the targe
 - Calls: search range `[spot, spot * 1.5]` (above spot, OTM)
 - Convergence: 100 iterations or strike range < $0.01
 
+## Volatility Selection
+
+All rules resolve volatility as:
+
+```
+vol = market.iv ?? config.impliedVol
+```
+
+When a stochastic vol model (Heston, Heston-Jump) is active, `market.iv` is populated from the model's instantaneous volatility (`√v[t]`). For constant-vol models (GBM, Jump), `market.iv` is undefined and rules fall back to `config.impliedVol`.
+
+This affects strike selection, premium calculation, and delta computation in all three rules.
+
 ## Premium Calculation
 
 ```
-rawPremium = bsPutPrice(spot, strike, T, r, iv)  // or bsCallPrice
+rawPremium = bsPutPrice(spot, strike, T, r, vol)  // or bsCallPrice
 premium = rawPremium * (1 - bidAskSpreadPct)
 ```
 

@@ -7,25 +7,68 @@
 
 ## Price Generation
 
-Geometric Brownian Motion with seeded PRNG.
-
 Source: `price-gen.ts`
 
-### Model
+Four models available, selected via `config.model` (default `"gbm"`). All models return `PriceGenResult: { prices: number[], ivPath?: number[] }`.
+
+### Models
+
+#### GBM (Geometric Brownian Motion)
+
+Constant-volatility log-normal model. The baseline.
 
 ```
-dailyReturn = exp(driftTerm + volTerm * Z)
-  where:
-    driftTerm = (annualDrift - sigma^2/2) * (1/365)
-    volTerm = sigma * sqrt(1/365)
-    Z ~ N(0,1) via Box-Muller transform
-
-price[t+1] = price[t] * dailyReturn
+price[t+1] = price[t] * exp((μ - σ²/2) * dt + σ * √dt * Z)
 ```
+
+Returns `{ prices }` (no `ivPath`).
+
+#### Heston (Stochastic Volatility)
+
+Andersen Quadratic-Exponential (QE) discretization. Variance follows a mean-reverting CIR process with correlated Brownian motions.
+
+```
+variance process: v[t+1] ~ QE(m, s²)  where m = θ + (v[t] - θ)·e^(-κ·dt)
+price Brownian:   z_S = ρ·z₁ + √(1-ρ²)·z₂
+price step:       price[t+1] = price[t] * exp((μ - v̄/2) * dt + √v̄ * √dt * z_S)
+  where v̄ = (v[t] + v[t+1]) / 2
+```
+
+QE scheme guarantees non-negative variance. Returns `{ prices, ivPath }` where `ivPath[i] = √v[i]`.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `kappa` | 2.0 | Mean-reversion speed |
+| `theta` | 0.64 | Long-run variance (σ²) |
+| `sigma` | 0.5 | Vol-of-vol |
+| `rho` | -0.7 | Price-variance correlation |
+| `v0` | theta | Initial variance |
+
+#### Jump Diffusion (Merton)
+
+GBM with Poisson jump arrivals. Drift-compensated to preserve expected return.
+
+```
+jump compensator: k = λ·(e^(μ_J + σ_J²/2) - 1)
+price[t+1] = price[t] * exp((μ - σ²/2 - k) * dt + σ * √dt * Z + J)
+  where J = μ_J + σ_J * z_J  with probability λ·dt, else 0
+```
+
+Returns `{ prices }` (no `ivPath`).
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `lambda` | 10 | Expected jumps per year |
+| `muJ` | 0 | Mean of log-jump size |
+| `sigmaJ` | 0.05 | Std dev of log-jump size |
+
+#### Heston + Jump (Combined)
+
+Heston variance process with Merton jump component on price. Returns `{ prices, ivPath }`.
 
 ### PRNG
 
-Splitmix32, seeded. Produces uniform [0, 1) values. Box-Muller converts pairs of uniforms to standard normals.
+Splitmix32, seeded. Produces uniform [0, 1) values. Box-Muller converts pairs of uniforms to standard normals. Single PRNG stream per model call — deterministic draw order.
 
 Invariant: `generatePrices({..., seed: 42})` always returns the same series.
 
@@ -35,9 +78,28 @@ Invariant: `generatePrices({..., seed: 42})` always returns the same series.
 |-----------|------|-------------|
 | `startPrice` | number | Initial price (USD) |
 | `days` | number | Number of daily prices to generate |
-| `annualVol` | number | Annualized volatility (0.80 = 80%) |
+| `annualVol` | number | Annualized volatility (0.80 = 80%). Used by GBM and jump models. |
 | `annualDrift` | number | Annualized drift (0.0 = martingale) |
 | `seed` | number | PRNG seed |
+| `model` | `PriceModel?` | `"gbm"` (default), `"heston"`, `"jump"`, `"heston-jump"` |
+| `heston` | `HestonParams?` | Required when model includes "heston" |
+| `jump` | `JumpParams?` | Required when model includes "jump" |
+
+### IV Path Threading
+
+When a model produces `ivPath` (Heston, Heston-Jump), it is passed through:
+
+```
+generatePrices() → { prices, ivPath }
+  ↓
+runMonteCarlo / rerunSingle → simulate(prices, rules, config, ivPath)
+  ↓
+simulate() → MarketSnapshot.iv = ivPath[day]
+  ↓
+rules → vol = market.iv ?? config.impliedVol  (used in all BS calls)
+```
+
+When `ivPath` is absent (GBM, Jump), `market.iv` is undefined and rules fall back to `config.impliedVol`.
 
 ## Black-Scholes Pricing
 
@@ -79,6 +141,9 @@ Both functions accept `StrategyConfig` (was `WheelConfig`) and internally call `
 | `days` | number | Simulation length |
 | `annualVol` | number | Realized volatility (IV = RV * (1 + ivPremiumPct/100), computed in UI) |
 | `annualDrift` | number | Expected annual drift |
+| `model` | `PriceModel?` | Price model selection (default `"gbm"`) |
+| `heston` | `HestonParams?` | Heston model parameters |
+| `jump` | `JumpParams?` | Jump diffusion parameters |
 
 ### Per-Run Metrics (RunSummary)
 
