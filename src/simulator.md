@@ -203,59 +203,59 @@ const insightColors = {positive: "#2ca02c", neutral: "#888", warning: "#e68a00",
 const insights = generateInsights(mc, strategyConfig);
 ```
 
-**Insights**
-
-<div style="display:flex;flex-direction:column;gap:0.5rem;">
-  ${insights.map((i) => html`
-    <div class="card" style="padding:0.5rem 1rem;border-left:4px solid ${insightColors[i.level]};">
-      <strong>${i.title}</strong>
-      <div style="font-size:0.85rem;margin-top:0.15rem">${i.message}</div>
-      ${i.suggestion ? html`<div style="font-size:0.8rem;color:var(--theme-foreground-muted);margin-top:0.25rem">${i.suggestion}</div>` : ""}
-    </div>
-  `)}
-</div>
-
-## Outcome Distribution
-
 ```js
 const winRuns = mc.runs.filter((r) => r.isWin);
 const loseRuns = mc.runs.filter((r) => !r.isWin);
 ```
 
 <div class="grid grid-cols-2">
-  <div class="card">
-    ${resize((width) =>
-      Plot.plot({
-        title: "APR Distribution: Wheel vs Buy & Hold",
-        width,
-        height: 260,
-        x: {label: "APR (%)", grid: true},
-        y: {label: "Count"},
-        marks: [
-          Plot.rectY(mc.runs, Plot.binX({y: "count"}, {x: "benchmarkAPR", fill: "#ff7f0e", fillOpacity: 0.35})),
-          Plot.rectY(winRuns, Plot.binX({y: "count"}, {x: "apr", fill: "#2ca02c", fillOpacity: 0.7})),
-          Plot.rectY(loseRuns, Plot.binX({y: "count"}, {x: "apr", fill: "#d62728", fillOpacity: 0.7})),
-          Plot.ruleX([0], {stroke: "#333", strokeDasharray: "4,4"})
-        ]
-      })
-    )}
-    <p style="margin:0.25rem 0 0"><small><span style="color:#2ca02c">&#9632;</span> Wheel (win) &nbsp; <span style="color:#d62728">&#9632;</span> Wheel (loss) &nbsp; <span style="color:#ff7f0e">&#9632;</span> Buy & Hold</small></p>
+  <div>
+    <strong>Insights</strong>
+    <div style="display:flex;flex-direction:column;gap:0.5rem;margin-top:0.5rem;">
+      ${insights.map((i) => html`
+        <div class="card" style="padding:0.5rem 1rem;border-left:4px solid ${insightColors[i.level]};">
+          <strong>${i.title}</strong>
+          <div style="font-size:0.85rem;margin-top:0.15rem">${i.message}</div>
+          ${i.suggestion ? html`<div style="font-size:0.8rem;color:var(--theme-foreground-muted);margin-top:0.25rem">${i.suggestion}</div>` : ""}
+        </div>
+      `)}
+    </div>
   </div>
-  <div class="card">
-    ${resize((width) =>
-      Plot.plot({
-        title: "Total P/L Distribution",
-        width,
-        height: 260,
-        x: {label: "Total P/L (USD)", grid: true},
-        y: {label: "Count"},
-        marks: [
-          Plot.rectY(winRuns, Plot.binX({y: "count"}, {x: "totalPL", fill: "#2ca02c", fillOpacity: 0.7})),
-          Plot.rectY(loseRuns, Plot.binX({y: "count"}, {x: "totalPL", fill: "#d62728", fillOpacity: 0.7})),
-          Plot.ruleX([0], {stroke: "#333", strokeDasharray: "4,4"})
-        ]
-      })
-    )}
+  <div style="display:flex;flex-direction:column;gap:0.75rem;">
+    <div class="card">
+      ${resize((width) =>
+        Plot.plot({
+          title: "APR Distribution: Wheel vs Buy & Hold",
+          width,
+          height: 180,
+          x: {label: "APR (%)", grid: true},
+          y: {label: "Count"},
+          marks: [
+            Plot.rectY(mc.runs, Plot.binX({y: "count"}, {x: "benchmarkAPR", fill: "#ff7f0e", fillOpacity: 0.35})),
+            Plot.rectY(winRuns, Plot.binX({y: "count"}, {x: "apr", fill: "#2ca02c", fillOpacity: 0.7})),
+            Plot.rectY(loseRuns, Plot.binX({y: "count"}, {x: "apr", fill: "#d62728", fillOpacity: 0.7})),
+            Plot.ruleX([0], {stroke: "#333", strokeDasharray: "4,4"})
+          ]
+        })
+      )}
+      <p style="margin:0.25rem 0 0"><small><span style="color:#2ca02c">&#9632;</span> Wheel (win) &nbsp; <span style="color:#d62728">&#9632;</span> Wheel (loss) &nbsp; <span style="color:#ff7f0e">&#9632;</span> Buy & Hold</small></p>
+    </div>
+    <div class="card">
+      ${resize((width) =>
+        Plot.plot({
+          title: "Total P/L Distribution",
+          width,
+          height: 180,
+          x: {label: "Total P/L (USD)", grid: true},
+          y: {label: "Count"},
+          marks: [
+            Plot.rectY(winRuns, Plot.binX({y: "count"}, {x: "totalPL", fill: "#2ca02c", fillOpacity: 0.7})),
+            Plot.rectY(loseRuns, Plot.binX({y: "count"}, {x: "totalPL", fill: "#d62728", fillOpacity: 0.7})),
+            Plot.ruleX([0], {stroke: "#333", strokeDasharray: "4,4"})
+          ]
+        })
+      )}
+    </div>
   </div>
 </div>
 
