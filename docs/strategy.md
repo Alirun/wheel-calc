@@ -118,6 +118,7 @@ Priority ordering: safety/skip rules (50) preempt selection rules (100). A `SKIP
 | `bidAskSpreadPct` | number | 0.05 | Premium haircut (5% = multiply raw premium by 0.95) |
 | `feePerTrade` | number | 0.50 | USD per contract per trade |
 | `adaptiveCalls` | optional | — | Adaptive call delta config (see below) |
+| `ivRvSpread` | optional | — | IV/RV spread scaling config (see below) |
 
 ### AdaptiveCallsConfig
 
@@ -126,6 +127,15 @@ Priority ordering: safety/skip rules (50) preempt selection rules (100). A `SKIP
 | `minDelta` | number | 0.10 | Call delta when deep underwater |
 | `maxDelta` | number | 0.50 | Call delta when profitable |
 | `skipThresholdPct` | number | 0.001 | Skip call if net premium < this fraction of position value |
+| `minStrikeAtCost` | boolean | true | Clamp call strike to never go below entry price (prevents locking in a loss) |
+
+### IVRVSpreadConfig
+
+| Parameter | Type | Example | Description |
+|-----------|------|---------|-------------|
+| `lookbackDays` | number | 20 | Trailing window for realized vol computation |
+| `minMultiplier` | number | 0.8 | Floor for delta multiplier (prevents over-conservative deltas) |
+| `maxMultiplier` | number | 1.3 | Cap for delta multiplier (prevents over-aggressive deltas) |
 
 ## Adaptive Call Delta
 
@@ -141,6 +151,42 @@ Effect:
 - Underwater (pnlPct ~ -100%) → delta ~ minDelta (deep OTM, low assignment risk)
 - Breakeven (pnlPct ~ 0%) → delta ~ midpoint
 - Profitable (pnlPct ~ +100%) → delta ~ maxDelta (closer ATM, higher premium)
+
+## IV/RV Spread Scaling
+
+When enabled, delta is dynamically adjusted based on how rich option premiums are relative to realized volatility:
+
+```
+realizedVol = std(logReturns[day-lookback+1..day]) * sqrt(365)
+iv = market.iv ?? config.impliedVol
+multiplier = clamp(iv / realizedVol, minMultiplier, maxMultiplier)
+effectiveDelta = targetDelta * multiplier  (capped at 0.50)
+```
+
+Effect:
+- IV/RV = 1.0 → multiplier = 1.0, no change
+- IV/RV = 1.3 → multiplier = 1.3, delta increases 30% (more aggressive, premiums are rich)
+- IV/RV = 0.7 → multiplier = minMultiplier (more conservative, premiums are fair/cheap)
+
+The multiplier applies to both `BasePutRule` (put delta) and `computeCallDelta()` (call delta, after adaptive P/L scaling).
+
+Edge cases:
+- `ivRvSpread` config absent → no RV computed, multiplier = 1.0, zero overhead
+- Day < lookback → `realizedVol = undefined`, multiplier = 1.0
+- Constant prices (RV = 0) → guarded by `rv <= 0` check, multiplier = 1.0
+- GBM model (no `market.iv`) → uses `config.impliedVol` for IV side of ratio
+- Combined with adaptive calls → multiplier applied after P/L scaling, final delta capped at 0.50
+
+## Minimum Strike at Cost Basis
+
+When `minStrikeAtCost` is enabled (default), both `AdaptiveCallRule` and `LowPremiumSkipRule` clamp the computed call strike to `max(strike, entryPrice)`. This prevents selling a call below the ETH entry price, which would lock in a guaranteed loss on the stock leg if assigned.
+
+If clamping pushes the strike up, the premium drops. This naturally interacts with `LowPremiumSkipRule` — if the only available call has insufficient premium, the skip rule catches it.
+
+The clamp only activates when:
+1. `adaptiveCalls.minStrikeAtCost` is `true`
+2. A position exists (`portfolio.position !== null`)
+3. The computed strike is below `entryPrice`
 
 ## Cycle Skip
 

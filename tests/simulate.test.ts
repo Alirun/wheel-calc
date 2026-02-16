@@ -1,5 +1,5 @@
 import {describe, it, expect} from "vitest";
-import {simulate} from "../src/components/strategy/simulate.js";
+import {simulate, computeRealizedVol} from "../src/components/strategy/simulate.js";
 import {defaultRules} from "../src/components/strategy/rules.js";
 import {generatePrices} from "../src/components/price-gen.js";
 import type {StrategyConfig} from "../src/components/strategy/types.js";
@@ -101,6 +101,59 @@ describe("simulate", () => {
     const result = simulate(prices, defaultRules(), config);
     for (const entry of result.signalLog) {
       expect(entry.market.iv).toBeUndefined();
+    }
+  });
+});
+
+describe("computeRealizedVol", () => {
+  it("returns undefined when day < lookback", () => {
+    const prices = [100, 101, 102];
+    expect(computeRealizedVol(prices, 2, 5)).toBeUndefined();
+    expect(computeRealizedVol(prices, 0, 1)).toBeUndefined();
+  });
+
+  it("returns a positive number with sufficient history", () => {
+    const prices = makePrices(42, 30);
+    const rv = computeRealizedVol(prices, 25, 20);
+    expect(rv).toBeDefined();
+    expect(rv).toBeGreaterThan(0);
+  });
+
+  it("returns 0 for constant prices", () => {
+    const prices = Array(30).fill(2500);
+    const rv = computeRealizedVol(prices, 25, 20);
+    expect(rv).toBe(0);
+  });
+
+  it("is deterministic", () => {
+    const prices = makePrices(42, 30);
+    const rv1 = computeRealizedVol(prices, 25, 20);
+    const rv2 = computeRealizedVol(prices, 25, 20);
+    expect(rv1).toBe(rv2);
+  });
+});
+
+describe("simulate with ivRvSpread", () => {
+  const ivRvConfig: StrategyConfig = {
+    ...config,
+    ivRvSpread: {lookbackDays: 5, minMultiplier: 0.8, maxMultiplier: 1.3},
+  };
+
+  it("populates realizedVol in MarketSnapshot when config present", () => {
+    const prices = makePrices(42, 30);
+    const result = simulate(prices, defaultRules(), ivRvConfig);
+    const lateEntries = result.signalLog.filter((e) => e.day >= 5);
+    for (const entry of lateEntries) {
+      expect(entry.market.realizedVol).toBeDefined();
+      expect(entry.market.realizedVol).toBeGreaterThan(0);
+    }
+  });
+
+  it("leaves realizedVol undefined when config absent", () => {
+    const prices = makePrices(42, 30);
+    const result = simulate(prices, defaultRules(), config);
+    for (const entry of result.signalLog) {
+      expect(entry.market.realizedVol).toBeUndefined();
     }
   });
 });

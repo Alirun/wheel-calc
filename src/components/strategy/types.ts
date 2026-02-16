@@ -4,6 +4,7 @@ export interface MarketSnapshot {
   day: number;
   spot: number;
   iv?: number;
+  realizedVol?: number;
 }
 
 export interface Position {
@@ -67,6 +68,13 @@ export interface AdaptiveCallsConfig {
   minDelta: number;
   maxDelta: number;
   skipThresholdPct: number;
+  minStrikeAtCost?: boolean;
+}
+
+export interface IVRVSpreadConfig {
+  lookbackDays: number;
+  minMultiplier: number;
+  maxMultiplier: number;
 }
 
 export interface StrategyConfig {
@@ -78,6 +86,7 @@ export interface StrategyConfig {
   bidAskSpreadPct: number;
   feePerTrade: number;
   adaptiveCalls?: AdaptiveCallsConfig;
+  ivRvSpread?: IVRVSpreadConfig;
 }
 
 export interface DailyState {

@@ -20,7 +20,7 @@
 
 ### High Impact
 - [ ] **Roll up and out instead of assignment** — When a call goes ITM before expiration, roll to a higher strike + further DTE for a net credit. Avoids forced selling and captures more upside. Current sim just waits for expiry.
-- [ ] **Minimum strike at cost-basis** — Never sell a call below the put assignment strike (entry price). Guarantees no loss on the stock leg if assigned. Currently the adaptive delta could theoretically select a strike below entry in a crash.
+- [x] **Minimum strike at cost-basis** — Never sell a call below the put assignment strike (entry price). Guarantees no loss on the stock leg if assigned. Implemented via `minStrikeAtCost` flag in `AdaptiveCallsConfig`.
 
 ### Medium Impact
 - [ ] **Staggered covered calls** — If holding multiple units, sell calls at different strikes/dates. Some closer ATM (higher premium), some further OTM (upside participation). Diversifies assignment risk.
@@ -47,7 +47,7 @@
 ## 4. Volatility & Pricing Model
 
 ### High Impact
-- [ ] **IV vs RV spread as a trading signal** — When IV >> RV, premiums are "rich" — sell more aggressively. When IV ~ RV, premiums are "fair" — be selective. Currently `ivPremiumPct` is static; this should be dynamic per-cycle.
+- [x] **IV vs RV spread as a trading signal** — When IV >> RV, premiums are "rich" — sell more aggressively. When IV ~ RV, premiums are "fair" — be selective. Delta multiplier `clamp(iv/rv, min, max)` scales puts and calls dynamically per-cycle.
 - [x] **Stochastic volatility model (Heston/SABR)** — Replace constant-vol GBM with mean-reverting, clustered vol. Real crypto vol exhibits these properties. Would make Monte Carlo results more realistic.
 
 ### Medium Impact
@@ -81,7 +81,7 @@
 DTE ladder wants positions **always** open at 30-45 DTE with rolling at 14-21 DTE. Event-aware skipping wants to **avoid** positions around certain events. Not incompatible, but rolling logic gets complex — if you're supposed to roll at 14 DTE but an event is at 12 DTE, do you roll into a new position or close entirely?
 
 #### 2. Dynamic Delta via IV Rank (1.1) vs IV/RV Spread Signal (4.1)
-Both modulate aggressiveness based on volatility but use **different signals**. IV rank/percentile asks "is IV high relative to its own history?" while IV/RV spread asks "is IV high relative to realized vol?" These can disagree: IV could be at its 90th percentile but still accurately pricing realized vol. Need to pick one as primary or combine them, not implement both independently.
+Both modulate aggressiveness based on volatility but use **different signals**. IV rank/percentile asks "is IV high relative to its own history?" while IV/RV spread asks "is IV high relative to realized vol?" These can disagree: IV could be at its 90th percentile but still accurately pricing realized vol. **Resolution: 1.1 skipped.** IV/RV spread (4.1) is the stronger signal — it measures actual edge (mispricing), while IV rank only measures absolute level. Under Heston stochastic vol, high IV/RV ratios already correlate with high IV rank, making the rank signal largely redundant.
 
 #### 3. Max Drawdown Stop-Loss (3.1) vs Assignment Cost Averaging (3.5)
 Stop-loss says "cut the position at X% loss." Cost averaging says "if price drops further, sell more puts to lower your average." These are **directly contradictory** — one limits loss, the other doubles down. Must choose one, or define clear regimes (cost-average within a band, stop-loss beyond it).
@@ -100,7 +100,7 @@ Skipping calls in an uptrend **increases** portfolio delta (fully long ETH with 
 These form a coherent "rolling strategy" package. Term structure is needed to correctly price different DTEs, DTE ladder to select optimal entry, and roll logic to manage positions mid-life. Implementing one without the others gives incomplete results.
 
 #### B. IV/RV Spread (4.1) + Dynamic Delta (1.1) + Stochastic Vol Model (4.2)
-Stochastic vol generates realistic IV/RV dynamics. IV/RV spread uses those dynamics as a signal. Dynamic delta acts on that signal. Without the better vol model, testing signal-based delta adjustment on constant-vol GBM is meaningless — IV would always equal the model's vol parameter.
+Stochastic vol generates realistic IV/RV dynamics. IV/RV spread uses those dynamics as a signal. Dynamic delta acts on that signal. Without the better vol model, testing signal-based delta adjustment on constant-vol GBM is meaningless — IV would always equal the model's vol parameter. *(4.1 and 4.2 done — 1.1 remains, can build on IV/RV spread multiplier.)*
 
 #### C. Benchmark vs B&H (5.1) + Sharpe/Sortino (5.2) + Regime Analysis (5.3)
 Pure analytics with no strategy changes. Complement each other perfectly and can be built independently. **Should be implemented first** — can't evaluate any improvement without proper benchmarks.
@@ -129,9 +129,9 @@ Completed: baseline metrics, benchmark comparison, risk-adjusted ratios, and reg
 Completed: Heston QE scheme, Merton jump diffusion, and combined heston-jump model implemented in `price-gen.ts`. IV path threaded through `monte-carlo.ts` → `simulate.ts` → `rules.ts`. Model selector + parameter inputs added to `simulator.md`.
 
 #### Phase 2: Core Strategy Improvements
-- **2.2** Minimum strike at cost-basis (simple guard, high value)
-- **4.1** IV/RV spread signal (now meaningful with stochastic vol)
-- **1.1** Dynamic delta (uses IV/RV spread)
+- [x] **2.2** Minimum strike at cost-basis (simple guard, high value)
+- [x] **4.1** IV/RV spread signal (now meaningful with stochastic vol)
+- ~**1.1** Dynamic delta~ — **Skipped.** IV/RV spread (4.1) already captures the core signal (mispricing vs realized risk). IV rank adds only mean-reversion timing, which is largely redundant under Heston's built-in mean reversion. Marginal value doesn't justify the added parameter complexity.
 - **2.1** Roll up/out
 
 Testing: run Monte Carlo with improvement ON vs OFF on identical seeds. Compare Sharpe/Sortino/max drawdown. Improvement should increase risk-adjusted returns, not just raw APR.

@@ -73,7 +73,12 @@ const strategyParams = view(Inputs.form({
   adaptiveCalls: Inputs.toggle({label: "Adaptive call delta", value: true}),
   minCallDelta: Inputs.range([0.05, 0.40], {value: 0.10, step: 0.01, label: "Min call delta (underwater)"}),
   maxCallDelta: Inputs.range([0.20, 0.70], {value: 0.50, step: 0.01, label: "Max call delta (profitable)"}),
-  skipThresholdPct: Inputs.range([0, 2], {value: 0.1, step: 0.05, label: "Skip threshold (%)"})
+  skipThresholdPct: Inputs.range([0, 2], {value: 0.1, step: 0.05, label: "Skip threshold (%)"}),
+  minStrikeAtCost: Inputs.toggle({label: "Min strike at cost basis", value: true}),
+  ivRvSpread: Inputs.toggle({label: "IV/RV spread scaling", value: true}),
+  ivRvLookback: Inputs.range([5, 60], {value: 20, step: 1, label: "RV lookback (days)"}),
+  ivRvMinMult: Inputs.range([0.5, 1.0], {value: 0.8, step: 0.05, label: "Min delta multiplier"}),
+  ivRvMaxMult: Inputs.range([1.0, 2.0], {value: 1.3, step: 0.05, label: "Max delta multiplier"})
 }));
 ```
 
@@ -127,7 +132,15 @@ const strategyConfig = {
     adaptiveCalls: {
       minDelta: strategyParams.minCallDelta,
       maxDelta: strategyParams.maxCallDelta,
-      skipThresholdPct: strategyParams.skipThresholdPct / 100
+      skipThresholdPct: strategyParams.skipThresholdPct / 100,
+      minStrikeAtCost: strategyParams.minStrikeAtCost
+    }
+  } : {}),
+  ...(strategyParams.ivRvSpread ? {
+    ivRvSpread: {
+      lookbackDays: strategyParams.ivRvLookback,
+      minMultiplier: strategyParams.ivRvMinMult,
+      maxMultiplier: strategyParams.ivRvMaxMult,
     }
   } : {})
 };
@@ -807,13 +820,15 @@ for (const entry of selectedResult.signalLog) {
   let strike = null;
   let delta = null;
   let iv = null;
+  let rv = null;
   let premium = null;
   let dPNL = null;
 
   if (sig.action === "SELL_PUT" || sig.action === "SELL_CALL") {
     strike = sig.strike;
     delta = Math.abs(sig.delta);
-    iv = strategyConfig.impliedVol;
+    iv = entry.market.iv ?? strategyConfig.impliedVol;
+    rv = entry.market.realizedVol ?? null;
     premium = sig.premium;
   }
 
@@ -841,6 +856,7 @@ for (const entry of selectedResult.signalLog) {
     Spot: entry.market.spot,
     Delta: delta,
     IV: iv,
+    RV: rv,
     Premium: premium,
     Reason: reason,
     "dPNL": dPNL,
@@ -859,6 +875,7 @@ for (const entry of selectedResult.signalLog) {
       Spot: (d) => `$${d.toFixed(0)}`,
       Delta: (d) => d != null ? d.toFixed(2) : "—",
       IV: (d) => d != null ? `${(d * 100).toFixed(0)}%` : "—",
+      RV: (d) => d != null ? `${(d * 100).toFixed(0)}%` : "—",
       Premium: (d) => d != null ? `$${d.toFixed(2)}` : "—",
       "dPNL": (d) => d != null ? `${d >= 0 ? "+" : ""}$${d.toFixed(2)}` : "—",
       "Total PNL": (d) => `${d >= 0 ? "+" : ""}$${d.toFixed(2)}`

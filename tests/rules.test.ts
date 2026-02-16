@@ -1,5 +1,5 @@
 import {describe, it, expect} from "vitest";
-import {defaultRules} from "../src/components/strategy/rules.js";
+import {defaultRules, computeIVRVMultiplier} from "../src/components/strategy/rules.js";
 import type {MarketSnapshot, PortfolioState, StrategyConfig} from "../src/components/strategy/types.js";
 import {initialPortfolio} from "../src/components/strategy/state.js";
 
@@ -139,6 +139,63 @@ describe("market.iv override", () => {
   });
 });
 
+describe("minStrikeAtCost", () => {
+  const adaptiveRule = findRule("AdaptiveCallRule");
+  const skipRule = findRule("LowPremiumSkipRule");
+
+  const deepDrawdownMarket: MarketSnapshot = {day: 0, spot: 1500};
+  const underwaterPortfolio: PortfolioState = {
+    ...initialPortfolio(),
+    phase: "holding_eth",
+    position: {size: 1, entryPrice: 3000},
+  };
+
+  const configOn: StrategyConfig = {
+    ...baseConfig,
+    adaptiveCalls: {minDelta: 0.10, maxDelta: 0.50, skipThresholdPct: 0.001, minStrikeAtCost: true},
+  };
+  const configOff: StrategyConfig = {
+    ...baseConfig,
+    adaptiveCalls: {minDelta: 0.10, maxDelta: 0.50, skipThresholdPct: 0.001, minStrikeAtCost: false},
+  };
+
+  it("clamps strike to entry price when spot < entry and flag is on", () => {
+    const sig = adaptiveRule.evaluate(deepDrawdownMarket, underwaterPortfolio, configOn)!;
+    expect(sig.action).toBe("SELL_CALL");
+    if (sig.action === "SELL_CALL") {
+      expect(sig.strike).toBeGreaterThanOrEqual(underwaterPortfolio.position!.entryPrice);
+      expect(sig.reason).toContain("clamped");
+    }
+  });
+
+  it("does NOT clamp strike when flag is off", () => {
+    const sig = adaptiveRule.evaluate(deepDrawdownMarket, underwaterPortfolio, configOff)!;
+    expect(sig.action).toBe("SELL_CALL");
+    if (sig.action === "SELL_CALL") {
+      expect(sig.strike).toBeLessThan(underwaterPortfolio.position!.entryPrice);
+      expect(sig.reason).not.toContain("clamped");
+    }
+  });
+
+  it("recalculates premium at the clamped strike", () => {
+    const sigOn = adaptiveRule.evaluate(deepDrawdownMarket, underwaterPortfolio, configOn)!;
+    const sigOff = adaptiveRule.evaluate(deepDrawdownMarket, underwaterPortfolio, configOff)!;
+    if (sigOn.action === "SELL_CALL" && sigOff.action === "SELL_CALL") {
+      expect(sigOn.premium).toBeLessThan(sigOff.premium);
+    }
+  });
+
+  it("clamped strike + low premium triggers skip rule", () => {
+    const highSkipConfig: StrategyConfig = {
+      ...baseConfig,
+      adaptiveCalls: {minDelta: 0.10, maxDelta: 0.50, skipThresholdPct: 99, minStrikeAtCost: true},
+    };
+    const sig = skipRule.evaluate(deepDrawdownMarket, underwaterPortfolio, highSkipConfig);
+    expect(sig).not.toBeNull();
+    expect(sig!.action).toBe("SKIP");
+  });
+});
+
 describe("LowPremiumSkipRule", () => {
   const rule = findRule("LowPremiumSkipRule");
 
@@ -183,5 +240,87 @@ describe("LowPremiumSkipRule", () => {
     };
     const noAdaptive: StrategyConfig = {...baseConfig, adaptiveCalls: undefined};
     expect(rule.evaluate(market, p, noAdaptive)).toBeNull();
+  });
+});
+
+describe("computeIVRVMultiplier", () => {
+  const ivRvConfig: StrategyConfig = {
+    ...baseConfig,
+    ivRvSpread: {lookbackDays: 20, minMultiplier: 0.8, maxMultiplier: 1.3},
+  };
+
+  it("returns 1.0 when config absent", () => {
+    expect(computeIVRVMultiplier(market, baseConfig)).toBe(1.0);
+  });
+
+  it("returns IV/RV ratio when within bounds", () => {
+    const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.92, realizedVol: 0.80};
+    const result = computeIVRVMultiplier(m, ivRvConfig);
+    expect(result).toBeCloseTo(0.92 / 0.80, 6);
+  });
+
+  it("clamps to maxMultiplier", () => {
+    const m: MarketSnapshot = {day: 25, spot: 2500, iv: 2.0, realizedVol: 0.50};
+    expect(computeIVRVMultiplier(m, ivRvConfig)).toBe(1.3);
+  });
+
+  it("clamps to minMultiplier", () => {
+    const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.30, realizedVol: 0.92};
+    expect(computeIVRVMultiplier(m, ivRvConfig)).toBe(0.8);
+  });
+
+  it("returns 1.0 when realizedVol is undefined", () => {
+    const m: MarketSnapshot = {day: 5, spot: 2500, iv: 0.92};
+    expect(computeIVRVMultiplier(m, ivRvConfig)).toBe(1.0);
+  });
+
+  it("returns 1.0 when realizedVol is 0", () => {
+    const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.92, realizedVol: 0};
+    expect(computeIVRVMultiplier(m, ivRvConfig)).toBe(1.0);
+  });
+
+  it("uses config.impliedVol when market.iv is undefined", () => {
+    const m: MarketSnapshot = {day: 25, spot: 2500, realizedVol: 0.80};
+    const result = computeIVRVMultiplier(m, ivRvConfig);
+    expect(result).toBeCloseTo(ivRvConfig.impliedVol / 0.80, 6);
+  });
+});
+
+describe("IV/RV spread delta scaling", () => {
+  const ivRvConfig: StrategyConfig = {
+    ...baseConfig,
+    ivRvSpread: {lookbackDays: 20, minMultiplier: 0.8, maxMultiplier: 1.3},
+  };
+
+  it("BasePutRule uses higher delta (strike closer to spot) when IV >> RV", () => {
+    const rule = findRule("BasePutRule");
+    const p = initialPortfolio();
+    const highIVRV: MarketSnapshot = {day: 25, spot: 2500, iv: 1.2, realizedVol: 0.60};
+    const noRV: MarketSnapshot = {day: 25, spot: 2500, iv: 1.2};
+    const sigHigh = rule.evaluate(highIVRV, p, ivRvConfig)!;
+    const sigNone = rule.evaluate(noRV, p, ivRvConfig)!;
+    expect(sigHigh.action).toBe("SELL_PUT");
+    expect(sigNone.action).toBe("SELL_PUT");
+    if (sigHigh.action === "SELL_PUT" && sigNone.action === "SELL_PUT") {
+      expect(sigHigh.strike).toBeGreaterThan(sigNone.strike);
+    }
+  });
+
+  it("AdaptiveCallRule uses higher delta when IV >> RV", () => {
+    const rule = findRule("AdaptiveCallRule");
+    const p: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "holding_eth",
+      position: {size: 1, entryPrice: 2400},
+    };
+    const highIVRV: MarketSnapshot = {day: 25, spot: 2500, iv: 1.2, realizedVol: 0.60};
+    const noRV: MarketSnapshot = {day: 25, spot: 2500, iv: 1.2};
+    const sigHigh = rule.evaluate(highIVRV, p, ivRvConfig)!;
+    const sigNone = rule.evaluate(noRV, p, ivRvConfig)!;
+    expect(sigHigh.action).toBe("SELL_CALL");
+    expect(sigNone.action).toBe("SELL_CALL");
+    if (sigHigh.action === "SELL_CALL" && sigNone.action === "SELL_CALL") {
+      expect(sigHigh.strike).toBeLessThan(sigNone.strike);
+    }
   });
 });

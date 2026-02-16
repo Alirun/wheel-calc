@@ -10,6 +10,17 @@ import {initialPortfolio, snapshotPortfolio, applyEvents, toDailyState} from "./
 import {evaluateRules, isDecisionPoint} from "./strategy.js";
 import {SimExecutor} from "./executor.js";
 
+export function computeRealizedVol(prices: number[], day: number, lookback: number): number | undefined {
+  if (day < lookback) return undefined;
+  const logReturns: number[] = [];
+  for (let i = day - lookback + 1; i <= day; i++) {
+    logReturns.push(Math.log(prices[i] / prices[i - 1]));
+  }
+  const mean = logReturns.reduce((s, r) => s + r, 0) / logReturns.length;
+  const variance = logReturns.reduce((s, r) => s + (r - mean) ** 2, 0) / (logReturns.length - 1);
+  return Math.sqrt(variance) * Math.sqrt(365);
+}
+
 export function simulate(
   prices: number[],
   rules: Rule[],
@@ -22,7 +33,10 @@ export function simulate(
   const dailyStates: DailyState[] = [];
 
   for (let day = 0; day < prices.length; day++) {
-    const market: MarketSnapshot = {day, spot: prices[day], iv: ivPath?.[day]};
+    const rv = config.ivRvSpread
+      ? computeRealizedVol(prices, day, config.ivRvSpread.lookbackDays)
+      : undefined;
+    const market: MarketSnapshot = {day, spot: prices[day], iv: ivPath?.[day], realizedVol: rv};
 
     if (isDecisionPoint(day, portfolio)) {
       const before = snapshotPortfolio(portfolio);
