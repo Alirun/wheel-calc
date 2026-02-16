@@ -120,43 +120,43 @@ const alpha = mc.meanAPR - mc.meanBenchmarkAPR;
 
 <div style="display:flex;flex-wrap:wrap;gap:0.75rem;">
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
-    <h3 style="margin:0;font-size:0.75rem;">Win Rate</h3>
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Percentage of simulation runs that ended with positive P/L. Above 50% means the strategy is profitable more often than not. Higher is better.">Win Rate</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.winRate >= 0.5 ? '#2ca02c' : '#d62728'}">
       ${(mc.winRate * 100).toFixed(1)}%
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
-    <h3 style="margin:0;font-size:0.75rem;">Mean APR</h3>
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Average annualized percentage return across all simulations. Positive means the strategy is profitable on average. Compare to B&H Mean APR to judge if the Wheel adds value.">Mean APR</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.meanAPR >= 0 ? '#2ca02c' : '#d62728'}">
       ${mc.meanAPR >= 0 ? '+' : ''}${mc.meanAPR.toFixed(1)}%
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
-    <h3 style="margin:0;font-size:0.75rem;">Median APR</h3>
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Middle-value annualized return (50th percentile). Less skewed by outliers than the mean. If median is much lower than mean, a few big winners are pulling the average up.">Median APR</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.medianAPR >= 0 ? '#2ca02c' : '#d62728'}">
       ${mc.medianAPR >= 0 ? '+' : ''}${mc.medianAPR.toFixed(1)}%
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
-    <h3 style="margin:0;font-size:0.75rem;">Mean P/L</h3>
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Average dollar profit or loss across all simulations. This is the actual dollar amount you'd expect to make or lose over the simulation period.">Mean P/L</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.meanPL >= 0 ? '#2ca02c' : '#d62728'}">
       ${mc.meanPL >= 0 ? '+' : ''}$${mc.meanPL.toFixed(2)}
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
-    <h3 style="margin:0;font-size:0.75rem;">Mean Max DD</h3>
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Average largest peak-to-trough loss across simulations. Shows how much you could lose before recovering. Closer to zero is better — a smaller drawdown means less pain. For example, -$100 is better than -$500.">Mean Max DD</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:#d62728">
       -$${mc.meanMaxDrawdown.toFixed(2)}
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
-    <h3 style="margin:0;font-size:0.75rem;">Sharpe</h3>
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Annualized Sharpe ratio: risk-adjusted return relative to the risk-free rate. Above 1.0 is good, above 2.0 is excellent. Measures return per unit of total volatility (both up and down).">Sharpe</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.meanSharpe >= 0 ? '#2ca02c' : '#d62728'}">
       ${mc.meanSharpe.toFixed(2)}
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
-    <h3 style="margin:0;font-size:0.75rem;">Sortino</h3>
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Annualized Sortino ratio: like Sharpe but only penalizes downside volatility. Above 1.0 is good, above 2.0 is excellent. Better for strategies with asymmetric returns since it ignores upside variance.">Sortino</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.meanSortino >= 0 ? '#2ca02c' : '#d62728'}">
       ${mc.meanSortino.toFixed(2)}
     </p>
@@ -167,31 +167,31 @@ const alpha = mc.meanAPR - mc.meanBenchmarkAPR;
 
 <div style="display:flex;flex-wrap:wrap;gap:0.75rem;">
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
-    <h3 style="margin:0;font-size:0.75rem;">B&H Mean APR</h3>
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Average annualized return from simply buying and holding ETH across all simulations. This is your baseline — if the Wheel can't beat this, you're better off just holding.">B&H Mean APR</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.meanBenchmarkAPR >= 0 ? '#2ca02c' : '#d62728'}">
       ${mc.meanBenchmarkAPR >= 0 ? '+' : ''}${mc.meanBenchmarkAPR.toFixed(1)}%
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
-    <h3 style="margin:0;font-size:0.75rem;">B&H Mean P/L</h3>
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Average dollar profit or loss from buying ETH at the start price and holding for the full simulation period. Compare to the Wheel's Mean P/L.">B&H Mean P/L</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.meanBenchmarkPL >= 0 ? '#2ca02c' : '#d62728'}">
       ${mc.meanBenchmarkPL >= 0 ? '+' : ''}$${mc.meanBenchmarkPL.toFixed(2)}
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
-    <h3 style="margin:0;font-size:0.75rem;">B&H Mean Max DD</h3>
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Average largest peak-to-trough loss for buy-and-hold across simulations. Compare to the Wheel's Max DD — the Wheel should ideally have a smaller drawdown (closer to zero) due to premium income cushioning losses.">B&H Mean Max DD</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:#d62728">
       -$${mc.meanBenchmarkMaxDD.toFixed(2)}
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
-    <h3 style="margin:0;font-size:0.75rem;">B&H Sharpe</h3>
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Annualized Sharpe ratio for buy-and-hold. Compare to the Wheel's Sharpe — a higher Wheel Sharpe means the strategy delivers better risk-adjusted returns than simply holding ETH.">B&H Sharpe</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.benchmarkMeanSharpe >= 0 ? '#2ca02c' : '#d62728'}">
       ${mc.benchmarkMeanSharpe.toFixed(2)}
     </p>
   </div>
   <div class="card" style="padding:0.5rem 1rem;min-width:0;border:2px solid ${alpha >= 0 ? '#2ca02c' : '#d62728'}">
-    <h3 style="margin:0;font-size:0.75rem;">Alpha (Wheel − B&H)</h3>
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Excess return of the Wheel over buy-and-hold (Mean APR minus B&H Mean APR). Positive alpha means the Wheel outperforms holding. This is the key metric — it tells you if the strategy adds value beyond simple exposure.">Alpha (Wheel − B&H)</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${alpha >= 0 ? '#2ca02c' : '#d62728'}">
       ${alpha >= 0 ? '+' : ''}${alpha.toFixed(1)}%
     </p>
