@@ -3,7 +3,7 @@
 ## 1. Put Selling Phase (Cash Secured)
 
 ### High Impact
-- [ ] **Dynamic delta based on IV rank/percentile** — Sell higher-delta (closer ATM) puts when IV is elevated (rich premiums compensate for risk), lower-delta when IV is low. Currently uses a fixed `targetDelta` regardless of vol regime.
+- [x] ~**Dynamic delta based on IV rank/percentile**~ — **Skipped.** Superseded by IV/RV spread signal (4.1), which measures actual mispricing rather than absolute IV level. Redundant under Heston stochastic vol.
 - [ ] **DTE ladder / rolling** — Instead of fixed 7-day cycles, sell at ~30-45 DTE and roll at ~14-21 DTE. Theta decay accelerates after 21 DTE but before that you carry gamma risk with less theta compensation. Rolling captures the "theta sweet spot" repeatedly.
 
 ### Medium Impact
