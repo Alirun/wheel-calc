@@ -79,6 +79,19 @@ export function applyEvents(state: PortfolioState, events: Event[]): PortfolioSt
         s.realizedPL += e.pl;
         s.phase = "idle_cash";
         break;
+
+      case "OPTION_ROLLED":
+        s.totalPremiumCollected += e.newPremium;
+        s.realizedPL += e.newPremium - e.rollCost - e.fees;
+        s.openOption = {
+          type: "call",
+          strike: e.newStrike,
+          delta: e.newDelta,
+          premium: e.newPremium,
+          openDay: e.openDay,
+          expiryDay: e.expiryDay,
+        };
+        break;
     }
   }
 

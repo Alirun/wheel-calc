@@ -135,6 +135,53 @@ describe("applyEvents", () => {
     expect(next.realizedPL).toBe(-200);
   });
 
+  it("OPTION_ROLLED keeps phase as short_call and updates openOption", () => {
+    const p: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "short_call",
+      position: {size: 1, entryPrice: 2400},
+      openOption: {type: "call", strike: 2600, delta: 0.3, premium: 40, openDay: 0, expiryDay: 7},
+    };
+    const events: Event[] = [{
+      type: "OPTION_ROLLED", oldStrike: 2600, newStrike: 2900, newDelta: 0.25,
+      originalPremium: 40, rollCost: 55, newPremium: 60, fees: 1, openDay: 3, expiryDay: 10,
+    }];
+    const next = applyEvents(p, events);
+    expect(next.phase).toBe("short_call");
+    expect(next.openOption).not.toBeNull();
+    expect(next.openOption!.strike).toBe(2900);
+    expect(next.openOption!.premium).toBe(60);
+    expect(next.openOption!.expiryDay).toBe(10);
+  });
+
+  it("OPTION_ROLLED increments totalPremiumCollected by newPremium (not originalPremium)", () => {
+    const p = {
+      ...initialPortfolio(),
+      phase: "short_call" as const,
+      openOption: {type: "call" as const, strike: 2600, delta: 0.3, premium: 40, openDay: 0, expiryDay: 7},
+    };
+    const events: Event[] = [{
+      type: "OPTION_ROLLED", oldStrike: 2600, newStrike: 2900, newDelta: 0.25,
+      originalPremium: 40, rollCost: 55, newPremium: 60, fees: 1, openDay: 3, expiryDay: 10,
+    }];
+    const next = applyEvents(p, events);
+    expect(next.totalPremiumCollected).toBe(60);
+  });
+
+  it("OPTION_ROLLED changes realizedPL by newPremium - rollCost - fees", () => {
+    const p = {
+      ...initialPortfolio(),
+      phase: "short_call" as const,
+      openOption: {type: "call" as const, strike: 2600, delta: 0.3, premium: 40, openDay: 0, expiryDay: 7},
+    };
+    const events: Event[] = [{
+      type: "OPTION_ROLLED", oldStrike: 2600, newStrike: 2900, newDelta: 0.25,
+      originalPremium: 40, rollCost: 55, newPremium: 60, fees: 1, openDay: 3, expiryDay: 10,
+    }];
+    const next = applyEvents(p, events);
+    expect(next.realizedPL).toBe(60 - 55 - 1);
+  });
+
   it("does not mutate the original state", () => {
     const p = initialPortfolio();
     const events: Event[] = [{type: "CYCLE_SKIPPED", reason: "test"}];

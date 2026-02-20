@@ -38,7 +38,14 @@ export function simulate(
       : undefined;
     const market: MarketSnapshot = {day, spot: prices[day], iv: ivPath?.[day], realizedVol: rv};
 
-    if (isDecisionPoint(day, portfolio)) {
+    const decisionPoint = isDecisionPoint(day, portfolio);
+    const rollTrigger = !decisionPoint
+      && config.rollCall
+      && portfolio.phase === "short_call"
+      && !!portfolio.openOption
+      && market.spot >= portfolio.openOption.strike * (1 + config.rollCall.itmThresholdPct);
+
+    if (decisionPoint || rollTrigger) {
       const before = snapshotPortfolio(portfolio);
 
       if (portfolio.openOption && day >= portfolio.openOption.expiryDay) {

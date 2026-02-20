@@ -286,6 +286,79 @@ describe("computeIVRVMultiplier", () => {
   });
 });
 
+describe("RollCallRule", () => {
+  const rule = findRule("RollCallRule");
+
+  const shortCallPortfolio: PortfolioState = {
+    ...initialPortfolio(),
+    phase: "short_call",
+    position: {size: 1, entryPrice: 2400},
+    openOption: {type: "call", strike: 2600, delta: 0.3, premium: 40, openDay: 0, expiryDay: 7},
+  };
+
+  // requireNetCredit: false so deep-ITM buyback cost doesn't block the signal
+  const rollConfig: StrategyConfig = {
+    ...baseConfig,
+    rollCall: {itmThresholdPct: 0.05, requireNetCredit: false},
+  };
+
+  it("returns null when rollCall config is absent", () => {
+    const marketITM: MarketSnapshot = {day: 3, spot: 2800};
+    expect(rule.evaluate(marketITM, shortCallPortfolio, baseConfig)).toBeNull();
+  });
+
+  it("returns null when spot is below threshold", () => {
+    // strike 2600 * 1.05 = 2730; spot 2720 is below
+    const marketOTM: MarketSnapshot = {day: 3, spot: 2720};
+    expect(rule.evaluate(marketOTM, shortCallPortfolio, rollConfig)).toBeNull();
+  });
+
+  it("returns ROLL signal when spot exceeds threshold", () => {
+    const marketITM: MarketSnapshot = {day: 3, spot: 2800};
+    const sig = rule.evaluate(marketITM, shortCallPortfolio, rollConfig);
+    expect(sig).not.toBeNull();
+    expect(sig!.action).toBe("ROLL");
+    if (sig!.action === "ROLL") {
+      expect(sig!.newStrike).toBeGreaterThan(0);
+      expect(sig!.rollCost).toBeGreaterThan(0);
+      expect(sig!.newPremium).toBeGreaterThan(0);
+      expect(sig!.rule).toBe("RollCallRule");
+    }
+  });
+
+  it("returns null when net credit is negative and requireNetCredit is true", () => {
+    // Deep ITM call buyback (spot >> strike) is always more expensive than new OTM premium
+    const configRequireCredit: StrategyConfig = {
+      ...baseConfig,
+      rollCall: {itmThresholdPct: 0.05, requireNetCredit: true},
+    };
+    const marketITM: MarketSnapshot = {day: 3, spot: 2800};
+    const sig = rule.evaluate(marketITM, shortCallPortfolio, configRequireCredit);
+    expect(sig).toBeNull();
+  });
+
+  it("newStrike is always >= current spot", () => {
+    const marketITM: MarketSnapshot = {day: 3, spot: 2800};
+    const sig = rule.evaluate(marketITM, shortCallPortfolio, rollConfig);
+    expect(sig).not.toBeNull();
+    if (sig!.action === "ROLL") {
+      expect(sig!.newStrike).toBeGreaterThanOrEqual(2800);
+    }
+  });
+
+  it("returns null when phase is not short_call", () => {
+    const p: PortfolioState = {...initialPortfolio(), phase: "holding_eth"};
+    const marketITM: MarketSnapshot = {day: 3, spot: 2800};
+    expect(rule.evaluate(marketITM, p, rollConfig)).toBeNull();
+  });
+
+  it("returns null when no openOption", () => {
+    const p: PortfolioState = {...initialPortfolio(), phase: "short_call"};
+    const marketITM: MarketSnapshot = {day: 3, spot: 2800};
+    expect(rule.evaluate(marketITM, p, rollConfig)).toBeNull();
+  });
+});
+
 describe("IV/RV spread delta scaling", () => {
   const ivRvConfig: StrategyConfig = {
     ...baseConfig,

@@ -19,7 +19,7 @@
 ## 2. Call Selling Phase (Covered)
 
 ### High Impact
-- [ ] **Roll up and out instead of assignment** — When a call goes ITM before expiration, roll to a higher strike + further DTE for a net credit. Avoids forced selling and captures more upside. Current sim just waits for expiry.
+- [x] **Roll up and out instead of assignment** — When a call goes ITM before expiration, roll to a higher strike + further DTE for a net credit. Avoids forced selling and captures more upside. Implemented via `RollCallRule` (priority 100, phase `short_call`) with configurable ITM threshold and optional net credit requirement. Mid-cycle roll trigger bypasses the normal `isDecisionPoint` gate. Premium collected at time of sale, not deferred to expiry.
 - [x] **Minimum strike at cost-basis** — Never sell a call below the put assignment strike (entry price). Guarantees no loss on the stock leg if assigned. Implemented via `minStrikeAtCost` flag in `AdaptiveCallsConfig`.
 
 ### Medium Impact
@@ -128,11 +128,13 @@ Completed: baseline metrics, benchmark comparison, risk-adjusted ratios, and reg
 
 Completed: Heston QE scheme, Merton jump diffusion, and combined heston-jump model implemented in `price-gen.ts`. IV path threaded through `monte-carlo.ts` → `simulate.ts` → `rules.ts`. Model selector + parameter inputs added to `simulator.md`.
 
-#### Phase 2: Core Strategy Improvements
+#### Phase 2: Core Strategy Improvements ✅
 - [x] **2.2** Minimum strike at cost-basis (simple guard, high value)
 - [x] **4.1** IV/RV spread signal (now meaningful with stochastic vol)
 - ~**1.1** Dynamic delta~ — **Skipped.** IV/RV spread (4.1) already captures the core signal (mispricing vs realized risk). IV rank adds only mean-reversion timing, which is largely redundant under Heston's built-in mean reversion. Marginal value doesn't justify the added parameter complexity.
-- **2.1** Roll up/out
+- [x] **2.1** Roll up/out — `RollCallRule` fires mid-cycle when `spot ≥ strike × (1 + itmThresholdPct)`. Buys back ITM call at ask, sells new OTM call at higher strike with fresh DTE. Optional `requireNetCredit` gate. UI controls: toggle, ITM threshold slider, net credit toggle. Chart shows rolled strike as new blue dotted line.
+
+Completed: all Phase 2 items done. Premium accounting refactored to collect at sale (not expiry) across all signal types including rolls.
 
 Testing: run Monte Carlo with improvement ON vs OFF on identical seeds. Compare Sharpe/Sortino/max drawdown. Improvement should increase risk-adjusted returns, not just raw APR.
 

@@ -25,8 +25,6 @@ export class SimExecutor implements Executor {
     if (!opt) return [];
 
     const events: Event[] = [];
-    const fees = config.feePerTrade * config.contracts;
-    const grossPremium = opt.premium * config.contracts;
 
     if (opt.type === "put") {
       const assigned = market.spot < opt.strike;
@@ -36,12 +34,6 @@ export class SimExecutor implements Executor {
         strike: opt.strike,
         spot: market.spot,
         assigned,
-      });
-      events.push({
-        type: "PREMIUM_COLLECTED",
-        grossPremium,
-        fees,
-        netAmount: grossPremium - fees,
       });
       if (assigned) {
         events.push({
@@ -64,23 +56,10 @@ export class SimExecutor implements Executor {
         const entryPrice = portfolio.position!.entryPrice;
         const ethPL = (opt.strike - entryPrice) * config.contracts;
         events.push({
-          type: "PREMIUM_COLLECTED",
-          grossPremium,
-          fees,
-          netAmount: grossPremium - fees,
-        });
-        events.push({
           type: "ETH_SOLD",
           price: opt.strike,
           size: config.contracts,
           pl: ethPL,
-        });
-      } else {
-        events.push({
-          type: "PREMIUM_COLLECTED",
-          grossPremium,
-          fees,
-          netAmount: grossPremium - fees,
         });
       }
     }
@@ -95,29 +74,45 @@ export class SimExecutor implements Executor {
     config: StrategyConfig,
   ): Event[] {
     switch (signal.action) {
-      case "SELL_PUT":
+      case "SELL_PUT": {
+        const fees = config.feePerTrade * config.contracts;
+        const grossPremium = signal.premium * config.contracts;
         return [{
           type: "OPTION_SOLD",
           optionType: "put",
           strike: signal.strike,
           premium: signal.premium,
           delta: signal.delta,
-          fees: config.feePerTrade * config.contracts,
+          fees,
           openDay: market.day,
           expiryDay: market.day + config.cycleLengthDays,
+        }, {
+          type: "PREMIUM_COLLECTED",
+          grossPremium,
+          fees,
+          netAmount: grossPremium - fees,
         }];
+      }
 
-      case "SELL_CALL":
+      case "SELL_CALL": {
+        const fees = config.feePerTrade * config.contracts;
+        const grossPremium = signal.premium * config.contracts;
         return [{
           type: "OPTION_SOLD",
           optionType: "call",
           strike: signal.strike,
           premium: signal.premium,
           delta: signal.delta,
-          fees: config.feePerTrade * config.contracts,
+          fees,
           openDay: market.day,
           expiryDay: market.day + config.cycleLengthDays,
+        }, {
+          type: "PREMIUM_COLLECTED",
+          grossPremium,
+          fees,
+          netAmount: grossPremium - fees,
         }];
+      }
 
       case "SKIP":
         return [{
@@ -137,8 +132,25 @@ export class SimExecutor implements Executor {
         }];
       }
 
-      case "ROLL":
-        return [];
+      case "ROLL": {
+        if (!portfolio.openOption) return [];
+        const opt = portfolio.openOption;
+        const originalPremium = opt.premium * config.contracts;
+        const rollCostGross = signal.rollCost * config.contracts;
+        const fees = 2 * config.feePerTrade * config.contracts;
+        return [{
+          type: "OPTION_ROLLED",
+          oldStrike: opt.strike,
+          newStrike: signal.newStrike,
+          newDelta: signal.newDelta,
+          originalPremium,
+          rollCost: rollCostGross,
+          newPremium: signal.newPremium,
+          fees,
+          openDay: market.day,
+          expiryDay: market.day + config.cycleLengthDays,
+        }];
+      }
 
       case "HOLD":
         return [];

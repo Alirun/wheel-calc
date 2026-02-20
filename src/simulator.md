@@ -78,7 +78,10 @@ const strategyParams = view(Inputs.form({
   ivRvSpread: Inputs.toggle({label: "IV/RV spread scaling", value: true}),
   ivRvLookback: Inputs.range([5, 60], {value: 20, step: 1, label: "RV lookback (days)"}),
   ivRvMinMult: Inputs.range([0.5, 1.0], {value: 0.8, step: 0.05, label: "Min delta multiplier"}),
-  ivRvMaxMult: Inputs.range([1.0, 2.0], {value: 1.3, step: 0.05, label: "Max delta multiplier"})
+  ivRvMaxMult: Inputs.range([1.0, 2.0], {value: 1.3, step: 0.05, label: "Max delta multiplier"}),
+  rollCall: Inputs.toggle({label: "Roll up & out", value: false}),
+  rollITMThreshold: Inputs.range([1, 20], {value: 5, step: 1, label: "ITM threshold (%)"}),
+  rollRequireCredit: Inputs.toggle({label: "Require net credit to roll", value: true})
 }));
 ```
 
@@ -141,6 +144,12 @@ const strategyConfig = {
       lookbackDays: strategyParams.ivRvLookback,
       minMultiplier: strategyParams.ivRvMinMult,
       maxMultiplier: strategyParams.ivRvMaxMult,
+    }
+  } : {}),
+  ...(strategyParams.rollCall ? {
+    rollCall: {
+      itmThresholdPct: strategyParams.rollITMThreshold / 100,
+      requireNetCredit: strategyParams.rollRequireCredit,
     }
   } : {})
 };
@@ -494,8 +503,8 @@ const stateMachineSvg = (() => {
     <text x="150" y="22" text-anchor="middle" fill="var(--theme-foreground-muted)" font-size="9">expired OTM</text>
 
     <!-- assigned: short_put → holding_eth (vertical right side) -->
-    <line x1="310" y1="20" x2="310" y2="140" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
-    <text x="324" y="82" fill="var(--theme-foreground-muted)" font-size="9">assigned</text>
+    <line x1="285" y1="20" x2="285" y2="140" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
+    <text x="300" y="82" fill="var(--theme-foreground-muted)" font-size="9">assigned</text>
 
     <!-- sell call: holding_eth → short_call (horizontal bottom, upper track) -->
     <line x1="220" y1="155" x2="80" y2="155" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
@@ -505,13 +514,17 @@ const stateMachineSvg = (() => {
     <path d="M340,150 C370,140 370,180 340,170" fill="none" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
     <text x="378" y="162" fill="var(--theme-foreground-muted)" font-size="9">skip</text>
 
+    <!-- roll: short_call self-loop (left side) -->
+    <path d="M-40,150 C-70,140 -70,180 -40,170" fill="none" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
+    <text x="-88" y="162" fill="var(--theme-foreground-muted)" font-size="9">roll</text>
+
     <!-- expired OTM: short_call → holding_eth (horizontal bottom, lower track) -->
     <line x1="80" y1="168" x2="220" y2="168" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
     <text x="150" y="184" text-anchor="middle" fill="var(--theme-foreground-muted)" font-size="9">expired OTM</text>
 
     <!-- assigned: short_call → idle_cash (straight vertical, left side) -->
-    <line x1="-45" y1="140" x2="-45" y2="20" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
-    <text x="-58" y="82" fill="var(--theme-foreground-muted)" font-size="9" text-anchor="end">assigned</text>
+    <line x1="20" y1="140" x2="20" y2="20" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
+    <text x="10" y="82" fill="var(--theme-foreground-muted)" font-size="9" text-anchor="end">assigned</text>
   `;
   const edgeGroup = document.createElementNS(ns, "g");
   edgeGroup.innerHTML = edges;
@@ -542,13 +555,15 @@ const signalLogRows = selectedResult.signalLog.map((entry) => {
   const phaseBefore = entry.portfolioBefore.phase;
   const phaseAfter = entry.portfolioAfter.phase;
   const transition = phaseBefore !== phaseAfter ? `${phaseBefore} → ${phaseAfter}` : phaseBefore;
+  const eventLines = entry.events.map((e) => e.type.replace(/_/g, " ").toLowerCase());
 
   return html`<tr style="font-size:0.78rem">
     <td>${entry.day}</td>
     <td style="color:${color};font-weight:600">${sig.action}</td>
     <td>${rule}</td>
-    <td style="color:var(--theme-foreground-muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${reason}">${reason}</td>
+    <td style="color:var(--theme-foreground-muted);font-size:0.70rem">${reason ? reason.split(", ").map((r) => html`<div>– ${r}</div>`) : ""}</td>
     <td style="font-size:0.72rem">${transition}</td>
+    <td style="font-size:0.70rem;color:var(--theme-foreground-muted)">${eventLines.map((e) => html`<div>– ${e}</div>`)}</td>
   </tr>`;
 });
 ```
@@ -562,6 +577,7 @@ ${signalLogRows.length === 0
         <th style="text-align:left;padding:2px 4px">Rule</th>
         <th style="text-align:left;padding:2px 4px">Reason</th>
         <th style="text-align:left;padding:2px 4px">Phase</th>
+        <th style="text-align:left;padding:2px 4px">Events</th>
       </tr></thead>
       <tbody>${signalLogRows}</tbody>
     </table>`
@@ -583,6 +599,14 @@ for (const entry of selectedResult.signalLog) {
         x2: e.expiryDay,
         type: e.optionType,
         strike: e.strike
+      });
+    }
+    if (e.type === "OPTION_ROLLED") {
+      cycleBands.push({
+        x1: e.openDay,
+        x2: e.expiryDay,
+        type: "call",
+        strike: e.newStrike
       });
     }
   }
@@ -673,6 +697,7 @@ const assignments = selectedResult.signalLog.flatMap((entry) =>
   <span style="color:#d62728">&#9679;</span> Sell Put &nbsp;
   <span style="color:#1f77b4">&#9679;</span> Sell Call &nbsp;
   <span style="color:#999">&#9679;</span> Skip &nbsp;
+  <span style="color:#ff7f0e">&#9679;</span> Roll &nbsp;
   <span style="color:#d62728">&#9671;</span> Put Assigned &nbsp;
   <span style="color:#1f77b4">&#9671;</span> Call Assigned
 </small></p>
@@ -844,6 +869,11 @@ for (const entry of selectedResult.signalLog) {
     if (e.type === "POSITION_CLOSED") {
       dPNL = (dPNL ?? 0) + e.pl;
       runningPL += e.pl;
+    }
+    if (e.type === "OPTION_ROLLED") {
+      const rollPL = e.newPremium - e.rollCost - e.fees;
+      dPNL = (dPNL ?? 0) + rollPL;
+      runningPL += rollPL;
     }
   }
 

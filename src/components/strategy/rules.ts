@@ -144,6 +144,59 @@ const lowPremiumSkipRule: Rule = {
   },
 };
 
+const rollCallRule: Rule = {
+  name: "RollCallRule",
+  description: "Roll short call up and out when spot exceeds strike by ITM threshold. Closes old call and opens a new one at a higher strike for a fresh cycle.",
+  phase: "short_call",
+  priority: 100,
+  evaluate(market, portfolio, config) {
+    if (portfolio.phase !== "short_call") return null;
+    if (!config.rollCall || !portfolio.openOption) return null;
+
+    const opt = portfolio.openOption;
+    const {itmThresholdPct, requireNetCredit} = config.rollCall;
+    if (market.spot < opt.strike * (1 + itmThresholdPct)) return null;
+
+    const vol = market.iv ?? config.impliedVol;
+    const remainingT = Math.max((opt.expiryDay - market.day) / 365, 1 / 365);
+    const newT = config.cycleLengthDays / 365;
+
+    const rollCostPerContract =
+      bsCallPrice(market.spot, opt.strike, remainingT, config.riskFreeRate, vol) *
+      (1 + config.bidAskSpreadPct);
+
+    const effectiveDelta = computeCallDelta(market, portfolio, config);
+    const rawNewStrike = findStrikeForDelta(
+      effectiveDelta, market.spot, newT, config.riskFreeRate, vol, "call",
+    );
+    const minStrike = config.adaptiveCalls?.minStrikeAtCost && portfolio.position
+      ? portfolio.position.entryPrice : 0;
+    const newStrike = Math.max(rawNewStrike, minStrike, market.spot);
+
+    const rawNewPremium = bsCallPrice(market.spot, newStrike, newT, config.riskFreeRate, vol);
+    const newPremiumPerContract = rawNewPremium * (1 - config.bidAskSpreadPct);
+
+    const fees = 2 * config.feePerTrade * config.contracts;
+    const grossCredit = (newPremiumPerContract - rollCostPerContract) * config.contracts;
+    const netCredit = grossCredit - fees;
+
+    if (requireNetCredit && netCredit <= 0) return null;
+
+    const newDelta = bsCallDelta(market.spot, newStrike, newT, config.riskFreeRate, vol);
+
+    return {
+      action: "ROLL",
+      newStrike,
+      newDelta,
+      rollCost: rollCostPerContract,
+      newPremium: newPremiumPerContract,
+      credit: netCredit,
+      rule: "RollCallRule",
+      reason: `spot=${market.spot.toFixed(0)} > strike=${opt.strike.toFixed(0)}, roll to ${newStrike.toFixed(0)}, netCredit=${netCredit.toFixed(2)}`,
+    };
+  },
+};
+
 export function defaultRules(): Rule[] {
-  return [lowPremiumSkipRule, basePutRule, adaptiveCallRule];
+  return [lowPremiumSkipRule, basePutRule, adaptiveCallRule, rollCallRule];
 }

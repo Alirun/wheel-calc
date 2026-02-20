@@ -30,11 +30,11 @@ IDLE_CASH ───SELL_PUT───→ SHORT_PUT
                                       │                      │
                            SELL_CALL  │  CLOSE_POSITION      │ expired OTM
                                       ↓                      │
-                                 SHORT_CALL ─────────────────┘
-                                      │
-                                 assigned
-                                      ↓
-                                 IDLE_CASH
+                         ┌──→ SHORT_CALL ─────────────────────┘
+                         │        │
+                    roll │   assigned
+                         │        ↓
+                         └── IDLE_CASH
 ```
 
 Phase type: `"idle_cash" | "short_put" | "holding_eth" | "short_call"`
@@ -42,7 +42,7 @@ Phase type: `"idle_cash" | "short_put" | "holding_eth" | "short_call"`
 - **idle_cash**: No position, no open option. Strategy evaluates `BasePutRule`.
 - **short_put**: Short put open. Waiting for expiry.
 - **holding_eth**: Assigned on put, holding ETH. Strategy evaluates `LowPremiumSkipRule` then `AdaptiveCallRule`.
-- **short_call**: Short call open. Waiting for expiry.
+- **short_call**: Short call open. Waiting for expiry, or rolling mid-cycle if spot crosses the ITM threshold.
 
 The `holding_eth` state enables decision-making between cycles: sell a call, skip, or close the position.
 
@@ -67,7 +67,7 @@ MarketSnapshot → Rules → Signal → Executor → Events → State reducer �
 | `SELL_CALL` | `AdaptiveCallRule` | strike, delta, premium, rule, reason |
 | `SKIP` | `LowPremiumSkipRule` | rule, reason |
 | `CLOSE_POSITION` | (future rules) | rule, reason |
-| `ROLL` | (future rules) | newStrike, newDelta, credit, rule, reason |
+| `ROLL` | `RollCallRule` | newStrike, newDelta, rollCost, newPremium, credit, rule, reason |
 | `HOLD` | default | (no fields) |
 
 ### Events (execution facts)
@@ -78,9 +78,10 @@ MarketSnapshot → Rules → Signal → Executor → Events → State reducer �
 | `OPTION_EXPIRED` | Expiry resolved: assigned or OTM |
 | `ETH_BOUGHT` | Put assigned |
 | `ETH_SOLD` | Call assigned |
-| `PREMIUM_COLLECTED` | Option expired (always collected) |
+| `PREMIUM_COLLECTED` | Option sold (emitted with `OPTION_SOLD` at time of sale) |
 | `CYCLE_SKIPPED` | SKIP signal executed |
 | `POSITION_CLOSED` | CLOSE_POSITION signal executed |
+| `OPTION_ROLLED` | ROLL signal executed: old call closed, new call opened |
 
 ## Rules
 
@@ -91,16 +92,15 @@ Each rule has a name, priority (lower = evaluated first), and a phase guard.
 | `LowPremiumSkipRule` | 50 | `holding_eth` | `SKIP` | Skip call cycle when net premium < `skipThresholdPct` of position value |
 | `BasePutRule` | 100 | `idle_cash` | `SELL_PUT` | Sell OTM put at `targetDelta` |
 | `AdaptiveCallRule` | 100 | `holding_eth` | `SELL_CALL` | Sell OTM call with delta scaled by unrealized P/L |
+| `RollCallRule` | 100 | `short_call` | `ROLL` | Roll short call up and out when spot exceeds strike by ITM threshold |
 
-Priority ordering: safety/skip rules (50) preempt selection rules (100). A `SKIP` at priority 50 prevents `SELL_CALL` at priority 100 from firing.
+Priority ordering: safety/skip rules (50) preempt selection rules (100). `RollCallRule` fires mid-cycle (before expiry) when the roll trigger is active; it runs at the same priority as `AdaptiveCallRule` but in a different phase.
 
 ### Planned rules (from IMPROVEMENTS.md)
 
 | Rule | Priority | Signal |
 |------|----------|--------|
 | `StopLossRule` | 10 | `CLOSE_POSITION` |
-| `MinStrikeRule` | 20 | `SKIP` or adjusts strike |
-| `RollRule` | 30 | `ROLL` |
 | `TrendFilterRule` | 40 | `SKIP` |
 | `IVRankDeltaRule` | 90 | `SELL_PUT` / `SELL_CALL` |
 
@@ -119,6 +119,7 @@ Priority ordering: safety/skip rules (50) preempt selection rules (100). A `SKIP
 | `feePerTrade` | number | 0.50 | USD per contract per trade |
 | `adaptiveCalls` | optional | — | Adaptive call delta config (see below) |
 | `ivRvSpread` | optional | — | IV/RV spread scaling config (see below) |
+| `rollCall` | optional | — | Roll up & out config (see below) |
 
 ### AdaptiveCallsConfig
 
@@ -136,6 +137,13 @@ Priority ordering: safety/skip rules (50) preempt selection rules (100). A `SKIP
 | `lookbackDays` | number | 20 | Trailing window for realized vol computation |
 | `minMultiplier` | number | 0.8 | Floor for delta multiplier (prevents over-conservative deltas) |
 | `maxMultiplier` | number | 1.3 | Cap for delta multiplier (prevents over-aggressive deltas) |
+
+### RollCallConfig
+
+| Parameter | Type | Example | Description |
+|-----------|------|---------|-------------|
+| `itmThresholdPct` | number | 0.05 | Roll when `spot ≥ strike × (1 + itmThresholdPct)` |
+| `requireNetCredit` | boolean | true | Skip roll if `(newPremium - rollCost) × contracts - fees ≤ 0` |
 
 ## Adaptive Call Delta
 
@@ -226,10 +234,35 @@ rawPremium = bsPutPrice(spot, strike, T, r, vol)  // or bsCallPrice
 premium = rawPremium * (1 - bidAskSpreadPct)
 ```
 
+## Roll Up & Out
+
+When `rollCall` config is present, `simulate.ts` evaluates a **roll trigger** on every day a short call is open:
+
+```
+rollTrigger = spot ≥ openOption.strike × (1 + itmThresholdPct)
+```
+
+When triggered, `RollCallRule` evaluates and (if approved) emits `OPTION_ROLLED`. The `OPTION_ROLLED` event atomically closes the old call and opens a new one:
+
+- **Buyback cost** (ask side): `bsCallPrice(spot, oldStrike, remainingT, r, vol) × (1 + bidAsk)`
+- **New strike**: `findStrikeForDelta` at same effective delta, clamped to `max(raw, costBasis, spot)` — always OTM
+- **New premium** (bid side): `bsCallPrice(spot, newStrike, newT, r, vol) × (1 - bidAsk)`
+- **Net credit**: `(newPremium - rollCost) × contracts - 2 × feePerTrade × contracts`
+
+Premium accounting per roll:
+
+| Field | `totalPremiumCollected` | `realizedPL` |
+|-------|------------------------|--------------|
+| Roll fires | `+= newPremium` | `+= newPremium - rollCost - fees` |
+
+Note: the original call's premium was already collected at sale time via `PREMIUM_COLLECTED`. The roll only books the new call's premium and debits the buyback cost + fees.
+
+Phase stays `short_call` after a roll — no assignment, no phase transition. The new option's expiry is `rollDay + cycleLengthDays`.
+
 ## Trade Lifecycle
 
-1. **Decision point**: No open option, or open option has expired (day >= expiryDay).
-2. **Resolve expiration** (if option open): Check assignment, emit `OPTION_EXPIRED` + `PREMIUM_COLLECTED` + assignment events.
+1. **Decision point**: No open option, open option has expired (`day ≥ expiryDay`), or roll trigger fires mid-cycle.
+2. **Resolve expiration** (if option open and at expiry): Check assignment, emit `OPTION_EXPIRED` + assignment events. (Premium was already collected at sale.)
 3. **Evaluate rules**: Run rules in priority order → produce Signal.
 4. **Execute signal**: Executor converts Signal to Events (BS pricing for sim).
 5. **Update state**: `applyEvents` reducer applies Events → new PortfolioState.

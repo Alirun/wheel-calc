@@ -38,7 +38,8 @@ export type Signal =
       rule: string; reason: string }
   | { action: "SKIP"; rule: string; reason: string }
   | { action: "CLOSE_POSITION"; rule: string; reason: string }
-  | { action: "ROLL"; newStrike: number; newDelta: number; credit: number;
+  | { action: "ROLL"; newStrike: number; newDelta: number;
+      rollCost: number; newPremium: number; credit: number;
       rule: string; reason: string }
   | { action: "HOLD" };
 
@@ -53,7 +54,10 @@ export type Event =
   | { type: "PREMIUM_COLLECTED"; grossPremium: number; fees: number; netAmount: number }
   | { type: "CYCLE_SKIPPED"; reason: string }
   | { type: "POSITION_CLOSED"; price: number; size: number; pl: number;
-      reason: string };
+      reason: string }
+  | { type: "OPTION_ROLLED"; oldStrike: number; newStrike: number;
+      newDelta: number; originalPremium: number; rollCost: number;
+      newPremium: number; fees: number; openDay: number; expiryDay: number };
 
 export interface SignalLogEntry {
   day: number;
@@ -77,6 +81,11 @@ export interface IVRVSpreadConfig {
   maxMultiplier: number;
 }
 
+export interface RollCallConfig {
+  itmThresholdPct: number;
+  requireNetCredit: boolean;
+}
+
 export interface StrategyConfig {
   targetDelta: number;
   impliedVol: number;
@@ -87,6 +96,7 @@ export interface StrategyConfig {
   feePerTrade: number;
   adaptiveCalls?: AdaptiveCallsConfig;
   ivRvSpread?: IVRVSpreadConfig;
+  rollCall?: RollCallConfig;
 }
 
 export interface DailyState {
