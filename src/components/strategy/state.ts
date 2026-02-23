@@ -9,6 +9,8 @@ export function initialPortfolio(): PortfolioState {
     totalPremiumCollected: 0,
     totalAssignments: 0,
     totalSkippedCycles: 0,
+    lastStopLossDay: null,
+    totalStopLosses: 0,
   };
 }
 
@@ -78,6 +80,11 @@ export function applyEvents(state: PortfolioState, events: Event[]): PortfolioSt
         s.position = null;
         s.realizedPL += e.pl;
         s.phase = "idle_cash";
+        break;
+
+      case "OPTION_BOUGHT_BACK":
+        s.openOption = null;
+        s.realizedPL -= (e.cost + e.fees);
         break;
 
       case "OPTION_ROLLED":

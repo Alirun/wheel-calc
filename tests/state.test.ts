@@ -12,6 +12,8 @@ describe("initialPortfolio", () => {
     expect(p.totalPremiumCollected).toBe(0);
     expect(p.totalAssignments).toBe(0);
     expect(p.totalSkippedCycles).toBe(0);
+    expect(p.lastStopLossDay).toBeNull();
+    expect(p.totalStopLosses).toBe(0);
   });
 });
 
@@ -187,5 +189,36 @@ describe("applyEvents", () => {
     const events: Event[] = [{type: "CYCLE_SKIPPED", reason: "test"}];
     applyEvents(p, events);
     expect(p.totalSkippedCycles).toBe(0);
+  });
+
+  it("OPTION_BOUGHT_BACK clears openOption and deducts cost+fees from realizedPL", () => {
+    const p: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "short_call",
+      position: {size: 1, entryPrice: 2400},
+      openOption: {type: "call", strike: 2600, delta: 0.3, premium: 40, openDay: 7, expiryDay: 14},
+      realizedPL: 100,
+    };
+    const events: Event[] = [{
+      type: "OPTION_BOUGHT_BACK", optionType: "call", strike: 2600, cost: 55, fees: 0.5,
+    }];
+    const next = applyEvents(p, events);
+    expect(next.openOption).toBeNull();
+    expect(next.realizedPL).toBe(100 - 55 - 0.5);
+  });
+
+  it("OPTION_BOUGHT_BACK does not affect position or phase", () => {
+    const p: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "short_call",
+      position: {size: 1, entryPrice: 2400},
+      openOption: {type: "call", strike: 2600, delta: 0.3, premium: 40, openDay: 7, expiryDay: 14},
+    };
+    const events: Event[] = [{
+      type: "OPTION_BOUGHT_BACK", optionType: "call", strike: 2600, cost: 55, fees: 0.5,
+    }];
+    const next = applyEvents(p, events);
+    expect(next.phase).toBe("short_call");
+    expect(next.position).not.toBeNull();
   });
 });

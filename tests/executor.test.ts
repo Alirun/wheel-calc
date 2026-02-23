@@ -152,7 +152,7 @@ describe("execute", () => {
     expect(events[0].type).toBe("CYCLE_SKIPPED");
   });
 
-  it("CLOSE_POSITION emits POSITION_CLOSED with P/L", () => {
+  it("CLOSE_POSITION without open option emits only POSITION_CLOSED", () => {
     const p: PortfolioState = {
       ...initialPortfolio(),
       phase: "holding_eth",
@@ -166,6 +166,50 @@ describe("execute", () => {
     if (events[0].type === "POSITION_CLOSED") {
       expect(events[0].pl).toBe(-200);
       expect(events[0].price).toBe(2200);
+    }
+  });
+
+  it("CLOSE_POSITION with open call emits OPTION_BOUGHT_BACK then POSITION_CLOSED", () => {
+    const p: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "short_call",
+      position: {size: 1, entryPrice: 2400},
+      openOption: {type: "call", strike: 2600, delta: 0.3, premium: 40, openDay: 7, expiryDay: 14},
+    };
+    const events = executor.execute(
+      {action: "CLOSE_POSITION", rule: "StopLossRule", reason: "drawdown=10%"},
+      {day: 10, spot: 2200}, p, config,
+    );
+    expect(events.length).toBe(2);
+    expect(events[0].type).toBe("OPTION_BOUGHT_BACK");
+    expect(events[1].type).toBe("POSITION_CLOSED");
+    if (events[0].type === "OPTION_BOUGHT_BACK") {
+      expect(events[0].optionType).toBe("call");
+      expect(events[0].strike).toBe(2600);
+      expect(events[0].cost).toBeGreaterThan(0);
+      expect(events[0].fees).toBe(config.feePerTrade * config.contracts);
+    }
+  });
+
+  it("CLOSE_POSITION buyback cost includes bid-ask spread", () => {
+    const p: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "short_call",
+      position: {size: 1, entryPrice: 2400},
+      openOption: {type: "call", strike: 2600, delta: 0.3, premium: 40, openDay: 7, expiryDay: 14},
+    };
+    const eventsWithSpread = executor.execute(
+      {action: "CLOSE_POSITION", rule: "StopLossRule", reason: "test"},
+      {day: 10, spot: 2200}, p, config,
+    );
+    const eventsNoSpread = executor.execute(
+      {action: "CLOSE_POSITION", rule: "StopLossRule", reason: "test"},
+      {day: 10, spot: 2200}, p, {...config, bidAskSpreadPct: 0},
+    );
+    expect(eventsWithSpread[0].type).toBe("OPTION_BOUGHT_BACK");
+    expect(eventsNoSpread[0].type).toBe("OPTION_BOUGHT_BACK");
+    if (eventsWithSpread[0].type === "OPTION_BOUGHT_BACK" && eventsNoSpread[0].type === "OPTION_BOUGHT_BACK") {
+      expect(eventsWithSpread[0].cost).toBeGreaterThan(eventsNoSpread[0].cost);
     }
   });
 

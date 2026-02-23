@@ -81,7 +81,10 @@ const strategyParams = view(Inputs.form({
   ivRvMaxMult: Inputs.range([1.0, 2.0], {value: 1.3, step: 0.05, label: "Max delta multiplier"}),
   rollCall: Inputs.toggle({label: "Roll up & out", value: false}),
   rollITMThreshold: Inputs.range([1, 20], {value: 5, step: 1, label: "ITM threshold (%)"}),
-  rollRequireCredit: Inputs.toggle({label: "Require net credit to roll", value: true})
+  rollRequireCredit: Inputs.toggle({label: "Require net credit to roll", value: true}),
+  stopLoss: Inputs.toggle({label: "Stop-loss", value: false}),
+  stopLossDrawdown: Inputs.range([5, 50], {value: 30, step: 1, label: "Drawdown threshold (%)"}),
+  stopLossCooldown: Inputs.range([0, 30], {value: 7, step: 1, label: "Cooldown days"})
 }));
 ```
 
@@ -151,6 +154,12 @@ const strategyConfig = {
       itmThresholdPct: strategyParams.rollITMThreshold / 100,
       requireNetCredit: strategyParams.rollRequireCredit,
     }
+  } : {}),
+  ...(strategyParams.stopLoss ? {
+    stopLoss: {
+      drawdownPct: strategyParams.stopLossDrawdown / 100,
+      cooldownDays: strategyParams.stopLossCooldown,
+    }
   } : {})
 };
 
@@ -196,6 +205,12 @@ const alpha = mc.meanAPR - mc.meanBenchmarkAPR;
       -$${mc.meanMaxDrawdown.toFixed(2)}
     </p>
   </div>
+  ${strategyParams.stopLoss ? html`<div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Average number of stop-loss exits per simulation. Higher means the stop-loss is firing frequently, which may indicate the threshold is too tight.">Mean Stop-Losses</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold">
+      ${mc.meanStopLosses.toFixed(1)}
+    </p>
+  </div>` : ""}
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
     <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Annualized Sharpe ratio: risk-adjusted return relative to the risk-free rate. Above 1.0 is good, above 2.0 is excellent. Measures return per unit of total volatility (both up and down).">Sharpe</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold;color:${mc.meanSharpe >= 0 ? '#2ca02c' : '#d62728'}">
@@ -350,6 +365,7 @@ const runsTable = mc.runs.map((r) => ({
   Assignments: r.assignments,
   Cycles: r.fullCycles,
   Skipped: r.skippedCycles,
+  ...(strategyParams.stopLoss ? {"Stop-Losses": r.totalStopLosses} : {}),
   "Max DD": -r.maxDrawdown,
   Win: r.isWin ? "Yes" : "No"
 }));
@@ -427,6 +443,10 @@ const selectedAPR = yearsElapsed > 0 ? (selectedResult.summary.totalRealizedPL /
     <h3 style="margin:0;font-size:0.75rem;">Skipped Cycles</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold">${selectedResult.summary.totalSkippedCycles}</p>
   </div>
+  ${strategyParams.stopLoss ? html`<div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;">Stop-Losses</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold">${selectedResult.summary.totalStopLosses}</p>
+  </div>` : ""}
 </div>
 
 ### State Machine
@@ -698,6 +718,7 @@ const assignments = selectedResult.signalLog.flatMap((entry) =>
   <span style="color:#1f77b4">&#9679;</span> Sell Call &nbsp;
   <span style="color:#999">&#9679;</span> Skip &nbsp;
   <span style="color:#ff7f0e">&#9679;</span> Roll &nbsp;
+  <span style="color:#000">&#9679;</span> Close Position &nbsp;
   <span style="color:#d62728">&#9671;</span> Put Assigned &nbsp;
   <span style="color:#1f77b4">&#9671;</span> Call Assigned
 </small></p>

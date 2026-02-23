@@ -359,6 +359,127 @@ describe("RollCallRule", () => {
   });
 });
 
+describe("StopLossRule", () => {
+  const rule = findRule("StopLossRule");
+
+  const stopLossConfig: StrategyConfig = {
+    ...baseConfig,
+    stopLoss: {drawdownPct: 0.30, cooldownDays: 7},
+  };
+
+  const holdingPortfolio: PortfolioState = {
+    ...initialPortfolio(),
+    phase: "holding_eth",
+    position: {size: 1, entryPrice: 2500},
+  };
+
+  it("returns null when stopLoss config absent", () => {
+    expect(rule.evaluate({day: 5, spot: 1500}, holdingPortfolio, baseConfig)).toBeNull();
+  });
+
+  it("returns null when phase is idle_cash", () => {
+    const p = initialPortfolio();
+    expect(rule.evaluate({day: 5, spot: 1500}, p, stopLossConfig)).toBeNull();
+  });
+
+  it("returns null when phase is short_put", () => {
+    const p: PortfolioState = {...initialPortfolio(), phase: "short_put"};
+    expect(rule.evaluate({day: 5, spot: 1500}, p, stopLossConfig)).toBeNull();
+  });
+
+  it("returns null when drawdown is below threshold", () => {
+    // 2500 entry, spot 1800 → drawdown = 700/2500 = 28% < 30%
+    expect(rule.evaluate({day: 5, spot: 1800}, holdingPortfolio, stopLossConfig)).toBeNull();
+  });
+
+  it("fires at threshold in holding_eth phase", () => {
+    // 2500 entry, spot 1750 → drawdown = 750/2500 = 30% == threshold
+    const sig = rule.evaluate({day: 5, spot: 1750}, holdingPortfolio, stopLossConfig);
+    expect(sig).not.toBeNull();
+    expect(sig!.action).toBe("CLOSE_POSITION");
+    if (sig!.action === "CLOSE_POSITION") {
+      expect(sig!.rule).toBe("StopLossRule");
+    }
+  });
+
+  it("fires in short_call phase", () => {
+    const p: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "short_call",
+      position: {size: 1, entryPrice: 2500},
+      openOption: {type: "call", strike: 2600, delta: 0.3, premium: 40, openDay: 0, expiryDay: 7},
+    };
+    // spot 1600 → drawdown = 900/2500 = 36% > 30%
+    const sig = rule.evaluate({day: 5, spot: 1600}, p, stopLossConfig);
+    expect(sig).not.toBeNull();
+    expect(sig!.action).toBe("CLOSE_POSITION");
+  });
+
+  it("reason string contains drawdown and threshold", () => {
+    const sig = rule.evaluate({day: 5, spot: 1750}, holdingPortfolio, stopLossConfig);
+    expect(sig).not.toBeNull();
+    if (sig!.action === "CLOSE_POSITION") {
+      expect(sig!.reason).toContain("drawdown=");
+      expect(sig!.reason).toContain("threshold=");
+    }
+  });
+});
+
+describe("StopLossCooldownRule", () => {
+  const rule = findRule("StopLossCooldownRule");
+
+  const stopLossConfig: StrategyConfig = {
+    ...baseConfig,
+    stopLoss: {drawdownPct: 0.30, cooldownDays: 7},
+  };
+
+  it("returns null when stopLoss config absent", () => {
+    const p: PortfolioState = {...initialPortfolio(), lastStopLossDay: 5};
+    expect(rule.evaluate({day: 8, spot: 2500}, p, baseConfig)).toBeNull();
+  });
+
+  it("returns null when no prior stop-loss (lastStopLossDay is null)", () => {
+    const p = initialPortfolio(); // lastStopLossDay: null
+    expect(rule.evaluate({day: 8, spot: 2500}, p, stopLossConfig)).toBeNull();
+  });
+
+  it("returns null when cooldown has elapsed", () => {
+    // lastStopLossDay 0, day 7, cooldown 7 → daysSince 7 >= 7
+    const p: PortfolioState = {...initialPortfolio(), lastStopLossDay: 0};
+    expect(rule.evaluate({day: 7, spot: 2500}, p, stopLossConfig)).toBeNull();
+  });
+
+  it("fires during cooldown period", () => {
+    // lastStopLossDay 0, day 5, cooldown 7 → daysSince 5 < 7
+    const p: PortfolioState = {...initialPortfolio(), lastStopLossDay: 0};
+    const sig = rule.evaluate({day: 5, spot: 2500}, p, stopLossConfig);
+    expect(sig).not.toBeNull();
+    expect(sig!.action).toBe("SKIP");
+    if (sig!.action === "SKIP") {
+      expect(sig!.rule).toBe("StopLossCooldownRule");
+      expect(sig!.reason).toContain("cooldown");
+    }
+  });
+
+  it("returns null when phase is not idle_cash", () => {
+    const p: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "holding_eth",
+      lastStopLossDay: 0,
+    };
+    expect(rule.evaluate({day: 5, spot: 2500}, p, stopLossConfig)).toBeNull();
+  });
+
+  it("returns null when cooldownDays is 0", () => {
+    const zeroCooldown: StrategyConfig = {
+      ...stopLossConfig,
+      stopLoss: {drawdownPct: 0.30, cooldownDays: 0},
+    };
+    const p: PortfolioState = {...initialPortfolio(), lastStopLossDay: 0};
+    expect(rule.evaluate({day: 5, spot: 2500}, p, zeroCooldown)).toBeNull();
+  });
+});
+
 describe("IV/RV spread delta scaling", () => {
   const ivRvConfig: StrategyConfig = {
     ...baseConfig,

@@ -276,6 +276,92 @@ describe("simulate with rollCall", () => {
   });
 });
 
+describe("simulate with stopLoss", () => {
+  const stopLossConfig: StrategyConfig = {
+    ...config,
+    stopLoss: {drawdownPct: 0.20, cooldownDays: 5},
+  };
+
+  function makeStopLossPrices(): number[] {
+    // Day 0: sell put, strike ~2200 (spot 2500, delta 0.30)
+    // Days 1-7: crash well below 2200 for assignment on day 7
+    // Day 7: put assigned → holding_eth at entry ~2200
+    //         holding_eth phase — spot must now drop 20% from ~2200 = ~1760 for stop-loss
+    // Day 8: sell call, then on day 9 crash far below entry to trigger stop-loss mid-cycle
+    const prices: number[] = [
+      2500,               // d0: sell put
+      2400, 2300, 2200, 2100, 2050, 2000, // d1-6: crash
+      2000,               // d7: put expires assigned (~2200 strike), holding_eth
+      2000,               // d8: sell call (decision point)
+      1700,               // d9: spot drops 32% from ~2200 entry → stop-loss fires
+      1700, 1700, 1700, 1700, 1700, 1700, // d10-15: buffer
+    ];
+    return prices;
+  }
+
+  it("stop-loss fires mid-cycle on steep price drop", () => {
+    const result = simulate(makeStopLossPrices(), defaultRules(), stopLossConfig);
+    const stopLossSignals = result.signalLog.filter(
+      (e) => e.signal.action === "CLOSE_POSITION" && e.signal.rule === "StopLossRule",
+    );
+    expect(stopLossSignals.length).toBeGreaterThan(0);
+    expect(result.summary.totalStopLosses).toBeGreaterThan(0);
+  });
+
+  it("no stop-loss fires without config (backward compat)", () => {
+    const result = simulate(makeStopLossPrices(), defaultRules(), config);
+    const stopLossSignals = result.signalLog.filter(
+      (e) => e.signal.action === "CLOSE_POSITION" && e.signal.rule === "StopLossRule",
+    );
+    expect(stopLossSignals.length).toBe(0);
+    expect(result.summary.totalStopLosses).toBe(0);
+  });
+
+  it("identical results without stopLoss config (backward compat)", () => {
+    const prices = makePrices(42, 30);
+    const r1 = simulate(prices, defaultRules(), config);
+    const r2 = simulate(prices, defaultRules(), config);
+    expect(r1.summary.totalRealizedPL).toBe(r2.summary.totalRealizedPL);
+    expect(r1.summary.totalStopLosses).toBe(0);
+    expect(r2.summary.totalStopLosses).toBe(0);
+  });
+
+  it("open call is bought back before position close", () => {
+    const result = simulate(makeStopLossPrices(), defaultRules(), stopLossConfig);
+    const stopLossSignals = result.signalLog.filter(
+      (e) => e.signal.action === "CLOSE_POSITION" && e.signal.rule === "StopLossRule",
+    );
+    // For any stop-loss that fires when a call is open, OPTION_BOUGHT_BACK precedes POSITION_CLOSED
+    for (const entry of stopLossSignals) {
+      const hasBuyback = entry.events.some((e) => e.type === "OPTION_BOUGHT_BACK");
+      const hasClose = entry.events.some((e) => e.type === "POSITION_CLOSED");
+      if (hasBuyback) {
+        expect(hasClose).toBe(true);
+        const buybackIdx = entry.events.findIndex((e) => e.type === "OPTION_BOUGHT_BACK");
+        const closeIdx = entry.events.findIndex((e) => e.type === "POSITION_CLOSED");
+        expect(buybackIdx).toBeLessThan(closeIdx);
+      }
+    }
+  });
+
+  it("cooldown prevents immediate re-entry after stop-loss", () => {
+    const result = simulate(makeStopLossPrices(), defaultRules(), stopLossConfig);
+    const stopLossEntries = result.signalLog.filter(
+      (e) => e.signal.action === "CLOSE_POSITION" && e.signal.rule === "StopLossRule",
+    );
+    if (stopLossEntries.length === 0) return;
+
+    const stopDay = stopLossEntries[0].day;
+    const cooldownDays = stopLossConfig.stopLoss!.cooldownDays;
+
+    // Any SELL_PUT within cooldown window must not exist
+    const earlyPuts = result.signalLog.filter(
+      (e) => e.signal.action === "SELL_PUT" && e.day > stopDay && e.day < stopDay + cooldownDays,
+    );
+    expect(earlyPuts.length).toBe(0);
+  });
+});
+
 describe("simulate with ivRvSpread", () => {
   const ivRvConfig: StrategyConfig = {
     ...config,

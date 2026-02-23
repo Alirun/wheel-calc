@@ -34,7 +34,7 @@
 ## 3. Position Management & Risk
 
 ### High Impact
-- [ ] **Max drawdown / stop-loss rule** — If unrealized loss on the ETH position exceeds X% (e.g., 30%), cut the position instead of hoping for recovery via call premium. Current strategy has unbounded downside during the holding phase.
+- [x] **Max drawdown / stop-loss rule** — If unrealized loss on the ETH position exceeds X% (e.g., 30%), cut the position instead of hoping for recovery via call premium. Implemented via `StopLossRule` + `StopLossCooldownRule` with configurable drawdown threshold and cooldown period.
 - [ ] **Position sizing via Kelly criterion or risk budget** — Size the number of contracts based on edge (premium/risk ratio) rather than a fixed number. Reduce exposure when premiums don't justify the risk.
 - [ ] **Portfolio-level delta management** — Track net portfolio delta and adjust strategy to stay within a target range. If holding ETH + selling calls, net delta is positive; if it gets too high, reduce exposure.
 
@@ -139,7 +139,7 @@ Completed: all Phase 2 items done. Premium accounting refactored to collect at s
 Testing: run Monte Carlo with improvement ON vs OFF on identical seeds. Compare Sharpe/Sortino/max drawdown. Improvement should increase risk-adjusted returns, not just raw APR.
 
 #### Phase 3: Risk Management
-- **3.1** Max drawdown stop-loss (pick over cost-averaging)
-- **3.3** Portfolio delta management
+- [x] **3.1** Max drawdown stop-loss — `StopLossRule` fires in `holding_eth` and `short_call` phases when `(entryPrice - spot) / entryPrice >= drawdownPct`. If a call is open, `OPTION_BOUGHT_BACK` fires first (buyback at ask), then `POSITION_CLOSED`. `StopLossCooldownRule` blocks put-selling for `cooldownDays` after a stop-loss. All gated on optional `stopLoss` config — disabled = identical behavior. UI: toggle + drawdown threshold slider + cooldown slider. Monte Carlo aggregates `meanStopLosses`.
+- ~**3.3** Portfolio delta management~ — **Deferred.** Adds marginal value for single-contract wheels. Becomes useful when multi-contract support is added.
 
 Testing: specifically examine 5th percentile outcomes. Should improve tail risk without gutting median returns.

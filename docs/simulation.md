@@ -156,6 +156,7 @@ Both functions accept `StrategyConfig` (was `WheelConfig`) and internally call `
 | `maxDrawdown` | Peak-to-trough of (cumulativePL + unrealizedPL) over daily states |
 | `fullCycles` | Count of call assignments (put→call→put completed), derived from `signalLog` |
 | `skippedCycles` | Count of SKIP signals |
+| `totalStopLosses` | Count of stop-loss exits. Always `0` when `stopLoss` config absent. |
 | `isWin` | totalPL > 0 |
 | `benchmarkPL` | (finalPrice - startPrice) * contracts |
 | `benchmarkAPR` | Same APR formula applied to benchmarkPL |
@@ -183,6 +184,7 @@ Daily returns for Sharpe/Sortino are computed as daily change in total P/L (real
 | `meanBenchmarkMaxDD` | Average buy-and-hold max drawdown |
 | `meanSharpe`, `meanSortino` | Average risk-adjusted ratios (wheel) |
 | `benchmarkMeanSharpe`, `benchmarkMeanSortino` | Average risk-adjusted ratios (buy-and-hold) |
+| `meanStopLosses` | Average stop-loss exits per run. Always `0` when `stopLoss` config absent. |
 | `regimeBreakdown` | Per-regime stats: count, meanAPR, meanBenchmarkAPR, meanAlpha, meanSharpe, winRate, meanMaxDrawdown |
 
 ### Regime Classification

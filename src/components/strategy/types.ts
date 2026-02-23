@@ -29,6 +29,8 @@ export interface PortfolioState {
   totalPremiumCollected: number;
   totalAssignments: number;
   totalSkippedCycles: number;
+  lastStopLossDay: number | null;
+  totalStopLosses: number;
 }
 
 export type Signal =
@@ -55,6 +57,8 @@ export type Event =
   | { type: "CYCLE_SKIPPED"; reason: string }
   | { type: "POSITION_CLOSED"; price: number; size: number; pl: number;
       reason: string }
+  | { type: "OPTION_BOUGHT_BACK"; optionType: "put" | "call"; strike: number;
+      cost: number; fees: number }
   | { type: "OPTION_ROLLED"; oldStrike: number; newStrike: number;
       newDelta: number; originalPremium: number; rollCost: number;
       newPremium: number; fees: number; openDay: number; expiryDay: number };
@@ -86,6 +90,11 @@ export interface RollCallConfig {
   requireNetCredit: boolean;
 }
 
+export interface StopLossConfig {
+  drawdownPct: number;
+  cooldownDays: number;
+}
+
 export interface StrategyConfig {
   targetDelta: number;
   impliedVol: number;
@@ -97,6 +106,7 @@ export interface StrategyConfig {
   adaptiveCalls?: AdaptiveCallsConfig;
   ivRvSpread?: IVRVSpreadConfig;
   rollCall?: RollCallConfig;
+  stopLoss?: StopLossConfig;
 }
 
 export interface DailyState {
@@ -116,5 +126,6 @@ export interface SimulationResult {
     totalPremiumCollected: number;
     totalAssignments: number;
     totalSkippedCycles: number;
+    totalStopLosses: number;
   };
 }

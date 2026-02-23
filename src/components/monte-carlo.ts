@@ -25,6 +25,7 @@ export interface RunSummary {
   apr: number;
   maxDrawdown: number;
   skippedCycles: number;
+  totalStopLosses: number;
   isWin: boolean;
   benchmarkPL: number;
   benchmarkAPR: number;
@@ -68,6 +69,7 @@ export interface MonteCarloResult {
   meanSortino: number;
   benchmarkMeanSharpe: number;
   benchmarkMeanSortino: number;
+  meanStopLosses: number;
   regimeBreakdown: RegimeBreakdown[];
 }
 
@@ -207,6 +209,7 @@ function summarizeRun(
     apr,
     maxDrawdown,
     skippedCycles: result.summary.totalSkippedCycles,
+    totalStopLosses: result.summary.totalStopLosses,
     isWin: totalPL > 0,
     benchmarkPL,
     benchmarkAPR,
@@ -297,6 +300,7 @@ export function runMonteCarlo(
     meanSortino: mean(runs.map((r) => r.sortino)),
     benchmarkMeanSharpe: mean(runs.map((r) => r.benchmarkSharpe)),
     benchmarkMeanSortino: mean(runs.map((r) => r.benchmarkSortino)),
+    meanStopLosses: mean(runs.map((r) => r.totalStopLosses)),
     regimeBreakdown,
   };
 }

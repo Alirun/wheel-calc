@@ -197,6 +197,42 @@ const rollCallRule: Rule = {
   },
 };
 
+const stopLossRule: Rule = {
+  name: "StopLossRule",
+  description: "Close ETH position when drawdown from entry exceeds threshold. Cuts unbounded losses during the holding phase.",
+  phase: "holding_eth | short_call",
+  priority: 1,
+  evaluate(market, portfolio, config) {
+    if (portfolio.phase !== "holding_eth" && portfolio.phase !== "short_call") return null;
+    if (!config.stopLoss || !portfolio.position) return null;
+    const drawdown = (portfolio.position.entryPrice - market.spot) / portfolio.position.entryPrice;
+    if (drawdown < config.stopLoss.drawdownPct) return null;
+    return {
+      action: "CLOSE_POSITION",
+      rule: "StopLossRule",
+      reason: `drawdown=${(drawdown * 100).toFixed(1)}% >= threshold=${(config.stopLoss.drawdownPct * 100).toFixed(1)}%`,
+    };
+  },
+};
+
+const stopLossCooldownRule: Rule = {
+  name: "StopLossCooldownRule",
+  description: "Block put-selling for N days after a stop-loss. Prevents immediately re-entering a falling market.",
+  phase: "idle_cash",
+  priority: 2,
+  evaluate(market, portfolio, config) {
+    if (portfolio.phase !== "idle_cash") return null;
+    if (!config.stopLoss || config.stopLoss.cooldownDays <= 0 || portfolio.lastStopLossDay === null) return null;
+    const daysSince = market.day - portfolio.lastStopLossDay;
+    if (daysSince >= config.stopLoss.cooldownDays) return null;
+    return {
+      action: "SKIP",
+      rule: "StopLossCooldownRule",
+      reason: `cooldown: ${daysSince}d since stop-loss, need ${config.stopLoss.cooldownDays}d`,
+    };
+  },
+};
+
 export function defaultRules(): Rule[] {
-  return [lowPremiumSkipRule, basePutRule, adaptiveCallRule, rollCallRule];
+  return [stopLossRule, stopLossCooldownRule, lowPremiumSkipRule, basePutRule, adaptiveCallRule, rollCallRule];
 }

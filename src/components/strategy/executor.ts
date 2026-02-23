@@ -1,4 +1,5 @@
 import type {MarketSnapshot, PortfolioState, StrategyConfig, Signal, Event} from "./types.js";
+import {bsCallPrice, bsPutPrice} from "../black-scholes.js";
 
 export interface Executor {
   resolveExpiration(
@@ -122,14 +123,27 @@ export class SimExecutor implements Executor {
 
       case "CLOSE_POSITION": {
         if (!portfolio.position) return [];
+        const events: Event[] = [];
+        if (portfolio.openOption) {
+          const opt = portfolio.openOption;
+          const vol = market.iv ?? config.impliedVol;
+          const T = Math.max((opt.expiryDay - market.day) / 365, 1 / 365);
+          const price = opt.type === "call"
+            ? bsCallPrice(market.spot, opt.strike, T, config.riskFreeRate, vol)
+            : bsPutPrice(market.spot, opt.strike, T, config.riskFreeRate, vol);
+          const cost = price * (1 + config.bidAskSpreadPct) * config.contracts;
+          const fees = config.feePerTrade * config.contracts;
+          events.push({type: "OPTION_BOUGHT_BACK", optionType: opt.type, strike: opt.strike, cost, fees});
+        }
         const pl = (market.spot - portfolio.position.entryPrice) * portfolio.position.size;
-        return [{
+        events.push({
           type: "POSITION_CLOSED",
           price: market.spot,
           size: portfolio.position.size,
           pl,
           reason: signal.reason,
-        }];
+        });
+        return events;
       }
 
       case "ROLL": {
