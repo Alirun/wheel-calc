@@ -44,6 +44,12 @@ export function simulate(
       && portfolio.phase === "short_call"
       && !!portfolio.openOption
       && market.spot >= portfolio.openOption.strike * (1 + config.rollCall.itmThresholdPct);
+    const rollPutTrigger = !decisionPoint
+      && config.rollPut
+      && portfolio.phase === "short_put"
+      && !!portfolio.openOption
+      && (portfolio.openOption.expiryDay - day) <= config.rollPut.rollWhenDTEBelow
+      && market.spot > portfolio.openOption.strike;
     const stopLossTrigger = !decisionPoint && !rollTrigger
       && config.stopLoss
       && (portfolio.phase === "holding_eth" || portfolio.phase === "short_call")
@@ -51,7 +57,7 @@ export function simulate(
       && (portfolio.position.entryPrice - market.spot) / portfolio.position.entryPrice
          >= config.stopLoss.drawdownPct;
 
-    if (decisionPoint || rollTrigger || stopLossTrigger) {
+    if (decisionPoint || rollTrigger || rollPutTrigger || stopLossTrigger) {
       const before = snapshotPortfolio(portfolio);
 
       if (portfolio.openOption && day >= portfolio.openOption.expiryDay) {
@@ -102,6 +108,7 @@ export function simulate(
       totalAssignments: portfolio.totalAssignments,
       totalSkippedCycles: portfolio.totalSkippedCycles,
       totalStopLosses: portfolio.totalStopLosses,
+      totalPutRolls: portfolio.totalPutRolls,
     },
   };
 }

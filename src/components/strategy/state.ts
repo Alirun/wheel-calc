@@ -11,6 +11,7 @@ export function initialPortfolio(): PortfolioState {
     totalSkippedCycles: 0,
     lastStopLossDay: null,
     totalStopLosses: 0,
+    totalPutRolls: 0,
   };
 }
 
@@ -91,13 +92,14 @@ export function applyEvents(state: PortfolioState, events: Event[]): PortfolioSt
         s.totalPremiumCollected += e.newPremium;
         s.realizedPL += e.newPremium - e.rollCost - e.fees;
         s.openOption = {
-          type: "call",
+          type: e.optionType,
           strike: e.newStrike,
           delta: e.newDelta,
           premium: e.newPremium,
           openDay: e.openDay,
           expiryDay: e.expiryDay,
         };
+        if (e.optionType === "put") s.totalPutRolls++;
         break;
     }
   }

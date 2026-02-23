@@ -359,6 +359,102 @@ describe("RollCallRule", () => {
   });
 });
 
+describe("RollPutRule", () => {
+  const rule = findRule("RollPutRule");
+
+  const rollPutConfig: StrategyConfig = {
+    ...baseConfig,
+    rollPut: {initialDTE: 30, rollWhenDTEBelow: 14, requireNetCredit: false},
+  };
+
+  const shortPutPortfolio: PortfolioState = {
+    ...initialPortfolio(),
+    phase: "short_put",
+    openOption: {type: "put", strike: 2400, delta: 0.3, premium: 50, openDay: 0, expiryDay: 30},
+  };
+
+  it("returns null when rollPut config is absent", () => {
+    const mkt: MarketSnapshot = {day: 20, spot: 2600};
+    expect(rule.evaluate(mkt, shortPutPortfolio, baseConfig)).toBeNull();
+  });
+
+  it("returns null when phase is not short_put", () => {
+    const p: PortfolioState = {...initialPortfolio(), phase: "idle_cash"};
+    const mkt: MarketSnapshot = {day: 20, spot: 2600};
+    expect(rule.evaluate(mkt, p, rollPutConfig)).toBeNull();
+  });
+
+  it("returns null when no openOption", () => {
+    const p: PortfolioState = {...initialPortfolio(), phase: "short_put"};
+    const mkt: MarketSnapshot = {day: 20, spot: 2600};
+    expect(rule.evaluate(mkt, p, rollPutConfig)).toBeNull();
+  });
+
+  it("returns null when remaining DTE is above rollWhenDTEBelow threshold", () => {
+    // expiryDay=30, day=15, remaining=15 > 14 rollWhenDTEBelow
+    const mkt: MarketSnapshot = {day: 15, spot: 2600};
+    expect(rule.evaluate(mkt, shortPutPortfolio, rollPutConfig)).toBeNull();
+  });
+
+  it("returns null when put is ITM (spot <= strike)", () => {
+    // spot 2300 <= strike 2400 → ITM, should not roll
+    const mkt: MarketSnapshot = {day: 20, spot: 2300};
+    expect(rule.evaluate(mkt, shortPutPortfolio, rollPutConfig)).toBeNull();
+  });
+
+  it("returns ROLL signal when OTM and DTE below threshold", () => {
+    // expiryDay=30, day=20, remaining=10 <= 14, spot 2600 > strike 2400 → OTM
+    const mkt: MarketSnapshot = {day: 20, spot: 2600};
+    const sig = rule.evaluate(mkt, shortPutPortfolio, rollPutConfig);
+    expect(sig).not.toBeNull();
+    expect(sig!.action).toBe("ROLL");
+    if (sig!.action === "ROLL") {
+      expect(sig!.newStrike).toBeLessThan(2600);
+      expect(sig!.rollCost).toBeGreaterThan(0);
+      expect(sig!.newPremium).toBeGreaterThan(0);
+      expect(sig!.rule).toBe("RollPutRule");
+    }
+  });
+
+  it("returns null when requireNetCredit is true and credit is negative", () => {
+    const creditConfig: StrategyConfig = {
+      ...rollPutConfig,
+      rollPut: {initialDTE: 30, rollWhenDTEBelow: 14, requireNetCredit: true},
+    };
+    // Very high bid-ask spread makes rollCost > newPremium → negative credit
+    const expensiveConfig: StrategyConfig = {
+      ...creditConfig,
+      bidAskSpreadPct: 0.5,
+    };
+    // Near expiry with tiny remaining value, high spread
+    const nearExpiry: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "short_put",
+      openOption: {type: "put", strike: 2580, delta: 0.3, premium: 50, openDay: 0, expiryDay: 30},
+    };
+    const mkt: MarketSnapshot = {day: 20, spot: 2600}; // only 10 DTE left, deep OTM, old strike near spot
+    const sig = rule.evaluate(mkt, nearExpiry, expensiveConfig);
+    expect(sig).toBeNull();
+  });
+
+  it("applies IV/RV spread scaling to new put delta", () => {
+    const ivRvConfig: StrategyConfig = {
+      ...rollPutConfig,
+      ivRvSpread: {lookbackDays: 20, minMultiplier: 0.8, maxMultiplier: 1.3},
+    };
+    const highIVRV: MarketSnapshot = {day: 20, spot: 2600, iv: 1.5, realizedVol: 0.60};
+    const noRV: MarketSnapshot = {day: 20, spot: 2600, iv: 1.5};
+    const sigHigh = rule.evaluate(highIVRV, shortPutPortfolio, ivRvConfig)!;
+    const sigNoRV = rule.evaluate(noRV, shortPutPortfolio, ivRvConfig)!;
+    expect(sigHigh.action).toBe("ROLL");
+    expect(sigNoRV.action).toBe("ROLL");
+    if (sigHigh.action === "ROLL" && sigNoRV.action === "ROLL") {
+      // Higher IV/RV ratio → higher effective delta → strike closer to spot (higher strike for put)
+      expect(sigHigh.newStrike).toBeGreaterThan(sigNoRV.newStrike);
+    }
+  });
+});
+
 describe("StopLossRule", () => {
   const rule = findRule("StopLossRule");
 

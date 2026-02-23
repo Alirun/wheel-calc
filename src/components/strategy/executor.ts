@@ -78,6 +78,7 @@ export class SimExecutor implements Executor {
       case "SELL_PUT": {
         const fees = config.feePerTrade * config.contracts;
         const grossPremium = signal.premium * config.contracts;
+        const putDTE = config.rollPut?.initialDTE ?? config.cycleLengthDays;
         return [{
           type: "OPTION_SOLD",
           optionType: "put",
@@ -86,7 +87,7 @@ export class SimExecutor implements Executor {
           delta: signal.delta,
           fees,
           openDay: market.day,
-          expiryDay: market.day + config.cycleLengthDays,
+          expiryDay: market.day + putDTE,
         }, {
           type: "PREMIUM_COLLECTED",
           grossPremium,
@@ -152,8 +153,12 @@ export class SimExecutor implements Executor {
         const originalPremium = opt.premium * config.contracts;
         const rollCostGross = signal.rollCost * config.contracts;
         const fees = 2 * config.feePerTrade * config.contracts;
+        const rollDTE = (opt.type === "put" && config.rollPut)
+          ? config.rollPut.initialDTE
+          : config.cycleLengthDays;
         return [{
           type: "OPTION_ROLLED",
+          optionType: opt.type,
           oldStrike: opt.strike,
           newStrike: signal.newStrike,
           newDelta: signal.newDelta,
@@ -162,7 +167,7 @@ export class SimExecutor implements Executor {
           newPremium: signal.newPremium,
           fees,
           openDay: market.day,
-          expiryDay: market.day + config.cycleLengthDays,
+          expiryDay: market.day + rollDTE,
         }];
       }
 

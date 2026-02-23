@@ -65,27 +65,75 @@ const costParams = view(Inputs.form({
     <h3>Strategy</h3>
 
 ```js
-const strategyParams = view(Inputs.form({
+const coreParams = view(Inputs.form({
   targetDelta: Inputs.range([0.05, 0.50], {value: 0.30, step: 0.01, label: "Target delta (puts)"}),
   ivPremiumPct: Inputs.range([0, 50], {value: 15, step: 1, label: "IV premium over RV (%)"}),
   cycleLengthDays: Inputs.range([1, 30], {value: 7, step: 1, label: "Cycle length (days)"}),
   contracts: Inputs.range([1, 20], {value: 1, step: 1, label: "Contracts (1 = 1 ETH)"}),
+}));
+```
+
+<hr style="margin:0.5rem 0;border:0;border-top:1px solid var(--theme-foreground-faintest)">
+<h4 style="margin:0.25rem 0">Adaptive Calls</h4>
+
+```js
+const adaptiveCallsParams = view(Inputs.form({
   adaptiveCalls: Inputs.toggle({label: "Adaptive call delta", value: true}),
   minCallDelta: Inputs.range([0.05, 0.40], {value: 0.10, step: 0.01, label: "Min call delta (underwater)"}),
   maxCallDelta: Inputs.range([0.20, 0.70], {value: 0.50, step: 0.01, label: "Max call delta (profitable)"}),
   skipThresholdPct: Inputs.range([0, 2], {value: 0.1, step: 0.05, label: "Skip threshold (%)"}),
   minStrikeAtCost: Inputs.toggle({label: "Min strike at cost basis", value: true}),
+}));
+```
+
+<hr style="margin:0.5rem 0;border:0;border-top:1px solid var(--theme-foreground-faintest)">
+<h4 style="margin:0.25rem 0">IV/RV Spread</h4>
+
+```js
+const ivRvParams = view(Inputs.form({
   ivRvSpread: Inputs.toggle({label: "IV/RV spread scaling", value: true}),
   ivRvLookback: Inputs.range([5, 60], {value: 20, step: 1, label: "RV lookback (days)"}),
   ivRvMinMult: Inputs.range([0.5, 1.0], {value: 0.8, step: 0.05, label: "Min delta multiplier"}),
   ivRvMaxMult: Inputs.range([1.0, 2.0], {value: 1.3, step: 0.05, label: "Max delta multiplier"}),
+}));
+```
+
+<hr style="margin:0.5rem 0;border:0;border-top:1px solid var(--theme-foreground-faintest)">
+<h4 style="margin:0.25rem 0">Call Rolling</h4>
+
+```js
+const rollCallParams = view(Inputs.form({
   rollCall: Inputs.toggle({label: "Roll up & out", value: false}),
   rollITMThreshold: Inputs.range([1, 20], {value: 5, step: 1, label: "ITM threshold (%)"}),
   rollRequireCredit: Inputs.toggle({label: "Require net credit to roll", value: true}),
+}));
+```
+
+<hr style="margin:0.5rem 0;border:0;border-top:1px solid var(--theme-foreground-faintest)">
+<h4 style="margin:0.25rem 0">Put Rolling (DTE Ladder)</h4>
+
+```js
+const rollPutParams = view(Inputs.form({
+  rollPut: Inputs.toggle({label: "Roll puts (DTE ladder)", value: false}),
+  rollPutInitialDTE: Inputs.range([14, 60], {value: 30, step: 1, label: "Initial put DTE"}),
+  rollPutWhenBelow: Inputs.range([7, 30], {value: 14, step: 1, label: "Roll when DTE below"}),
+  rollPutRequireCredit: Inputs.toggle({label: "Require net credit (puts)", value: true}),
+}));
+```
+
+<hr style="margin:0.5rem 0;border:0;border-top:1px solid var(--theme-foreground-faintest)">
+<h4 style="margin:0.25rem 0">Stop-Loss</h4>
+
+```js
+const stopLossParams = view(Inputs.form({
   stopLoss: Inputs.toggle({label: "Stop-loss", value: false}),
   stopLossDrawdown: Inputs.range([5, 50], {value: 30, step: 1, label: "Drawdown threshold (%)"}),
-  stopLossCooldown: Inputs.range([0, 30], {value: 7, step: 1, label: "Cooldown days"})
+  stopLossCooldown: Inputs.range([0, 30], {value: 7, step: 1, label: "Cooldown days"}),
 }));
+```
+
+```js
+const strategyParams = {...coreParams, ...adaptiveCallsParams, ...ivRvParams, ...rollCallParams, ...rollPutParams, ...stopLossParams};
 ```
 
   </div>
@@ -155,6 +203,13 @@ const strategyConfig = {
       requireNetCredit: strategyParams.rollRequireCredit,
     }
   } : {}),
+  ...(strategyParams.rollPut ? {
+    rollPut: {
+      initialDTE: strategyParams.rollPutInitialDTE,
+      rollWhenDTEBelow: strategyParams.rollPutWhenBelow,
+      requireNetCredit: strategyParams.rollPutRequireCredit,
+    }
+  } : {}),
   ...(strategyParams.stopLoss ? {
     stopLoss: {
       drawdownPct: strategyParams.stopLossDrawdown / 100,
@@ -209,6 +264,12 @@ const alpha = mc.meanAPR - mc.meanBenchmarkAPR;
     <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Average number of stop-loss exits per simulation. Higher means the stop-loss is firing frequently, which may indicate the threshold is too tight.">Mean Stop-Losses</h3>
     <p style="margin:0;font-size:1.25rem;font-weight:bold">
       ${mc.meanStopLosses.toFixed(1)}
+    </p>
+  </div>` : ""}
+  ${strategyParams.rollPut ? html`<div class="card" style="padding:0.5rem 1rem;min-width:0;">
+    <h3 style="margin:0;font-size:0.75rem;cursor:help;" title="Average number of put rolls per simulation. Each roll re-sells the put at fresh initialDTE, staying in the theta sweet spot.">Mean Put Rolls</h3>
+    <p style="margin:0;font-size:1.25rem;font-weight:bold">
+      ${mc.meanPutRolls.toFixed(1)}
     </p>
   </div>` : ""}
   <div class="card" style="padding:0.5rem 1rem;min-width:0;">
@@ -465,10 +526,12 @@ const smEdges = [
   {from: "idle_cash", to: "short_put", label: "sell put"},
   {from: "short_put", to: "idle_cash", label: "expired OTM"},
   {from: "short_put", to: "holding_eth", label: "assigned"},
+  {from: "short_put", to: "short_put", label: "roll"},
   {from: "holding_eth", to: "short_call", label: "sell call"},
   {from: "holding_eth", to: "holding_eth", label: "skip"},
   {from: "short_call", to: "holding_eth", label: "expired OTM"},
-  {from: "short_call", to: "idle_cash", label: "assigned"}
+  {from: "short_call", to: "idle_cash", label: "assigned"},
+  {from: "short_call", to: "short_call", label: "roll"}
 ];
 
 const phaseColors = {
@@ -533,6 +596,10 @@ const stateMachineSvg = (() => {
     <!-- skip: holding_eth self-loop (right side) -->
     <path d="M340,150 C370,140 370,180 340,170" fill="none" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
     <text x="378" y="162" fill="var(--theme-foreground-muted)" font-size="9">skip</text>
+
+    <!-- roll: short_put self-loop (right side) -->
+    <path d="M340,-10 C370,-20 370,20 340,10" fill="none" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
+    <text x="378" y="2" fill="var(--theme-foreground-muted)" font-size="9">roll</text>
 
     <!-- roll: short_call self-loop (left side) -->
     <path d="M-40,150 C-70,140 -70,180 -40,170" fill="none" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
@@ -625,7 +692,7 @@ for (const entry of selectedResult.signalLog) {
       cycleBands.push({
         x1: e.openDay,
         x2: e.expiryDay,
-        type: "call",
+        type: e.optionType,
         strike: e.newStrike
       });
     }

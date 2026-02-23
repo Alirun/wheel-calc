@@ -221,7 +221,7 @@ describe("execute", () => {
     expect(events).toEqual([]);
   });
 
-  it("ROLL emits OPTION_ROLLED with correct fields", () => {
+  it("ROLL emits OPTION_ROLLED with correct fields including optionType", () => {
     const p: PortfolioState = {
       ...initialPortfolio(),
       phase: "short_call",
@@ -237,6 +237,7 @@ describe("execute", () => {
     const e = events[0];
     expect(e.type).toBe("OPTION_ROLLED");
     if (e.type === "OPTION_ROLLED") {
+      expect(e.optionType).toBe("call");
       expect(e.oldStrike).toBe(2600);
       expect(e.newStrike).toBe(2900);
       expect(e.newDelta).toBe(0.25);
@@ -246,6 +247,30 @@ describe("execute", () => {
       expect(e.fees).toBe(2 * config.feePerTrade * config.contracts);
       expect(e.openDay).toBe(3);
       expect(e.expiryDay).toBe(3 + config.cycleLengthDays);
+    }
+  });
+
+  it("ROLL for put uses rollPut.initialDTE for expiryDay", () => {
+    const p: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "short_put",
+      openOption: {type: "put", strike: 2400, delta: 0.3, premium: 50, openDay: 0, expiryDay: 14},
+    };
+    const rollPutConfig: StrategyConfig = {
+      ...config,
+      rollPut: {initialDTE: 30, rollWhenDTEBelow: 14, requireNetCredit: false},
+    };
+    const market: MarketSnapshot = {day: 12, spot: 2600};
+    const events = executor.execute(
+      {action: "ROLL", newStrike: 2300, newDelta: 0.28, rollCost: 5, newPremium: 80, credit: 50, rule: "RollPutRule", reason: "test"},
+      market, p, rollPutConfig,
+    );
+    expect(events.length).toBe(1);
+    const e = events[0];
+    expect(e.type).toBe("OPTION_ROLLED");
+    if (e.type === "OPTION_ROLLED") {
+      expect(e.optionType).toBe("put");
+      expect(e.expiryDay).toBe(12 + 30);
     }
   });
 

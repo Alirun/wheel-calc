@@ -386,3 +386,62 @@ describe("simulate with ivRvSpread", () => {
     }
   });
 });
+
+describe("simulate with rollPut", () => {
+  const rollPutConfig: StrategyConfig = {
+    ...config,
+    cycleLengthDays: 7,
+    rollPut: {initialDTE: 30, rollWhenDTEBelow: 14, requireNetCredit: false},
+  };
+
+  // Flat prices: put stays OTM the whole time. The put is sold at initialDTE=30.
+  // When 14 DTE remain (day 16), the rule should roll since spot > strike.
+  function makeFlatPrices(days: number): number[] {
+    return Array(days).fill(2500);
+  }
+
+  it("put rolls mid-cycle when DTE drops below threshold (flat prices)", () => {
+    const prices = makeFlatPrices(60);
+    const result = simulate(prices, defaultRules(), rollPutConfig);
+    const rollSignals = result.signalLog.filter((e) => e.signal.action === "ROLL" && e.signal.rule === "RollPutRule");
+    expect(rollSignals.length).toBeGreaterThan(0);
+    expect(result.summary.totalPutRolls).toBeGreaterThan(0);
+  });
+
+  it("rolled put uses initialDTE for new expiryDay", () => {
+    const prices = makeFlatPrices(60);
+    const result = simulate(prices, defaultRules(), rollPutConfig);
+    const rollEntries = result.signalLog.filter((e) => e.signal.action === "ROLL" && e.signal.rule === "RollPutRule");
+    for (const entry of rollEntries) {
+      const rolled = entry.events.find((ev) => ev.type === "OPTION_ROLLED");
+      expect(rolled).toBeDefined();
+      if (rolled && rolled.type === "OPTION_ROLLED") {
+        expect(rolled.expiryDay).toBe(entry.day + rollPutConfig.rollPut!.initialDTE);
+      }
+    }
+  });
+
+  it("no roll when put is ITM (crashed prices)", () => {
+    // Prices crash below put strike immediately — put is always ITM, should not roll
+    const prices = [2500, ...Array(59).fill(1500)];
+    const result = simulate(prices, defaultRules(), rollPutConfig);
+    const rollSignals = result.signalLog.filter((e) => e.signal.action === "ROLL" && e.signal.rule === "RollPutRule");
+    expect(rollSignals.length).toBe(0);
+  });
+
+  it("no put rolling without rollPut config (backward compat)", () => {
+    const prices = makeFlatPrices(60);
+    const result = simulate(prices, defaultRules(), config);
+    const rollSignals = result.signalLog.filter((e) => e.signal.action === "ROLL" && e.signal.rule === "RollPutRule");
+    expect(rollSignals.length).toBe(0);
+    expect(result.summary.totalPutRolls).toBe(0);
+  });
+
+  it("totalPutRolls tracked in summary", () => {
+    const prices = makeFlatPrices(100);
+    const result = simulate(prices, defaultRules(), rollPutConfig);
+    const putRollEvents = result.signalLog.flatMap((e) => e.events)
+      .filter((ev) => ev.type === "OPTION_ROLLED" && ev.optionType === "put");
+    expect(result.summary.totalPutRolls).toBe(putRollEvents.length);
+  });
+});

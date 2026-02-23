@@ -36,7 +36,7 @@ const basePutRule: Rule = {
   evaluate(market, portfolio, config) {
     if (portfolio.phase !== "idle_cash") return null;
 
-    const T = config.cycleLengthDays / 365;
+    const T = (config.rollPut?.initialDTE ?? config.cycleLengthDays) / 365;
     const vol = market.iv ?? config.impliedVol;
     const ivRvMult = computeIVRVMultiplier(market, config);
     const effectiveDelta = Math.min(config.targetDelta * ivRvMult, 0.50);
@@ -233,6 +233,60 @@ const stopLossCooldownRule: Rule = {
   },
 };
 
+const rollPutRule: Rule = {
+  name: "RollPutRule",
+  description: "Roll short put forward when DTE drops below threshold and put is OTM. Re-sells at fresh initialDTE to stay in the theta sweet spot (21-45 DTE).",
+  phase: "short_put",
+  priority: 100,
+  evaluate(market, portfolio, config) {
+    if (portfolio.phase !== "short_put") return null;
+    if (!config.rollPut || !portfolio.openOption) return null;
+
+    const opt = portfolio.openOption;
+    const {initialDTE, rollWhenDTEBelow, requireNetCredit} = config.rollPut;
+    const remainingDTE = opt.expiryDay - market.day;
+    if (remainingDTE > rollWhenDTEBelow) return null;
+
+    if (market.spot <= opt.strike) return null;
+
+    const vol = market.iv ?? config.impliedVol;
+    const remainingT = Math.max(remainingDTE / 365, 1 / 365);
+    const newT = initialDTE / 365;
+
+    const rollCostPerContract =
+      bsPutPrice(market.spot, opt.strike, remainingT, config.riskFreeRate, vol) *
+      (1 + config.bidAskSpreadPct);
+
+    const ivRvMult = computeIVRVMultiplier(market, config);
+    const effectiveDelta = Math.min(config.targetDelta * ivRvMult, 0.50);
+    const newStrike = findStrikeForDelta(
+      effectiveDelta, market.spot, newT, config.riskFreeRate, vol, "put",
+    );
+
+    const rawNewPremium = bsPutPrice(market.spot, newStrike, newT, config.riskFreeRate, vol);
+    const newPremiumPerContract = rawNewPremium * (1 - config.bidAskSpreadPct);
+
+    const fees = 2 * config.feePerTrade * config.contracts;
+    const grossCredit = (newPremiumPerContract - rollCostPerContract) * config.contracts;
+    const netCredit = grossCredit - fees;
+
+    if (requireNetCredit && netCredit <= 0) return null;
+
+    const newDelta = bsPutDelta(market.spot, newStrike, newT, config.riskFreeRate, vol);
+
+    return {
+      action: "ROLL",
+      newStrike,
+      newDelta: Math.abs(newDelta),
+      rollCost: rollCostPerContract,
+      newPremium: newPremiumPerContract,
+      credit: netCredit,
+      rule: "RollPutRule",
+      reason: `remainingDTE=${remainingDTE} <= ${rollWhenDTEBelow}, roll to ${newStrike.toFixed(0)}, netCredit=${netCredit.toFixed(2)}`,
+    };
+  },
+};
+
 export function defaultRules(): Rule[] {
-  return [stopLossRule, stopLossCooldownRule, lowPremiumSkipRule, basePutRule, adaptiveCallRule, rollCallRule];
+  return [stopLossRule, stopLossCooldownRule, lowPremiumSkipRule, basePutRule, adaptiveCallRule, rollCallRule, rollPutRule];
 }

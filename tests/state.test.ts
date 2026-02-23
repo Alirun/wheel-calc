@@ -14,6 +14,7 @@ describe("initialPortfolio", () => {
     expect(p.totalSkippedCycles).toBe(0);
     expect(p.lastStopLossDay).toBeNull();
     expect(p.totalStopLosses).toBe(0);
+    expect(p.totalPutRolls).toBe(0);
   });
 });
 
@@ -145,15 +146,52 @@ describe("applyEvents", () => {
       openOption: {type: "call", strike: 2600, delta: 0.3, premium: 40, openDay: 0, expiryDay: 7},
     };
     const events: Event[] = [{
-      type: "OPTION_ROLLED", oldStrike: 2600, newStrike: 2900, newDelta: 0.25,
+      type: "OPTION_ROLLED", optionType: "call", oldStrike: 2600, newStrike: 2900, newDelta: 0.25,
       originalPremium: 40, rollCost: 55, newPremium: 60, fees: 1, openDay: 3, expiryDay: 10,
     }];
     const next = applyEvents(p, events);
     expect(next.phase).toBe("short_call");
     expect(next.openOption).not.toBeNull();
+    expect(next.openOption!.type).toBe("call");
     expect(next.openOption!.strike).toBe(2900);
     expect(next.openOption!.premium).toBe(60);
     expect(next.openOption!.expiryDay).toBe(10);
+  });
+
+  it("OPTION_ROLLED with optionType put sets openOption.type to put", () => {
+    const p: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "short_put",
+      openOption: {type: "put", strike: 2400, delta: 0.3, premium: 50, openDay: 0, expiryDay: 14},
+    };
+    const events: Event[] = [{
+      type: "OPTION_ROLLED", optionType: "put", oldStrike: 2400, newStrike: 2300, newDelta: 0.28,
+      originalPremium: 50, rollCost: 10, newPremium: 80, fees: 1, openDay: 12, expiryDay: 42,
+    }];
+    const next = applyEvents(p, events);
+    expect(next.openOption!.type).toBe("put");
+    expect(next.openOption!.strike).toBe(2300);
+  });
+
+  it("OPTION_ROLLED increments totalPutRolls for put rolls, not call rolls", () => {
+    const base = {...initialPortfolio(), phase: "short_put" as const,
+      openOption: {type: "put" as const, strike: 2400, delta: 0.3, premium: 50, openDay: 0, expiryDay: 14}};
+
+    const putRollEvents: Event[] = [{
+      type: "OPTION_ROLLED", optionType: "put", oldStrike: 2400, newStrike: 2300, newDelta: 0.28,
+      originalPremium: 50, rollCost: 10, newPremium: 80, fees: 1, openDay: 12, expiryDay: 42,
+    }];
+    const afterPutRoll = applyEvents(base, putRollEvents);
+    expect(afterPutRoll.totalPutRolls).toBe(1);
+
+    const callBase = {...initialPortfolio(), phase: "short_call" as const,
+      openOption: {type: "call" as const, strike: 2600, delta: 0.3, premium: 40, openDay: 0, expiryDay: 7}};
+    const callRollEvents: Event[] = [{
+      type: "OPTION_ROLLED", optionType: "call", oldStrike: 2600, newStrike: 2900, newDelta: 0.25,
+      originalPremium: 40, rollCost: 55, newPremium: 60, fees: 1, openDay: 3, expiryDay: 10,
+    }];
+    const afterCallRoll = applyEvents(callBase, callRollEvents);
+    expect(afterCallRoll.totalPutRolls).toBe(0);
   });
 
   it("OPTION_ROLLED increments totalPremiumCollected by newPremium (not originalPremium)", () => {
@@ -163,7 +201,7 @@ describe("applyEvents", () => {
       openOption: {type: "call" as const, strike: 2600, delta: 0.3, premium: 40, openDay: 0, expiryDay: 7},
     };
     const events: Event[] = [{
-      type: "OPTION_ROLLED", oldStrike: 2600, newStrike: 2900, newDelta: 0.25,
+      type: "OPTION_ROLLED", optionType: "call", oldStrike: 2600, newStrike: 2900, newDelta: 0.25,
       originalPremium: 40, rollCost: 55, newPremium: 60, fees: 1, openDay: 3, expiryDay: 10,
     }];
     const next = applyEvents(p, events);
@@ -177,7 +215,7 @@ describe("applyEvents", () => {
       openOption: {type: "call" as const, strike: 2600, delta: 0.3, premium: 40, openDay: 0, expiryDay: 7},
     };
     const events: Event[] = [{
-      type: "OPTION_ROLLED", oldStrike: 2600, newStrike: 2900, newDelta: 0.25,
+      type: "OPTION_ROLLED", optionType: "call", oldStrike: 2600, newStrike: 2900, newDelta: 0.25,
       originalPremium: 40, rollCost: 55, newPremium: 60, fees: 1, openDay: 3, expiryDay: 10,
     }];
     const next = applyEvents(p, events);
