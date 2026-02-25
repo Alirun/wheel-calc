@@ -87,26 +87,26 @@ function median(sorted: number[]): number {
   return percentile(sorted, 50);
 }
 
-function computeMaxDrawdown(dailyStates: {cumulativePL: number; unrealizedPL: number}[]): number {
-  let peak = -Infinity;
+function computeMaxDrawdown(dailyStates: {cumulativePL: number; unrealizedPL: number}[], initialCapital: number): number {
+  let peak = initialCapital;
   let maxDD = 0;
   for (const d of dailyStates) {
-    const totalPL = d.cumulativePL + d.unrealizedPL;
-    if (totalPL > peak) peak = totalPL;
-    const dd = peak - totalPL;
+    const totalValue = initialCapital + d.cumulativePL + d.unrealizedPL;
+    if (totalValue > peak) peak = totalValue;
+    const dd = (peak - totalValue) / peak;
     if (dd > maxDD) maxDD = dd;
   }
   return maxDD;
 }
 
 export function computeBenchmarkMaxDD(prices: number[], contracts: number): number {
-  let peak = -Infinity;
+  let peak = prices[0] * contracts;
   let maxDD = 0;
   const p0 = prices[0];
   for (const p of prices) {
-    const pl = (p - p0) * contracts;
-    if (pl > peak) peak = pl;
-    const dd = peak - pl;
+    const val = p * contracts;
+    if (val > peak) peak = val;
+    const dd = (peak - val) / peak;
     if (dd > maxDD) maxDD = dd;
   }
   return maxDD;
@@ -163,9 +163,9 @@ function summarizeRun(
   const unrealizedPL = lastDay ? lastDay.unrealizedPL : 0;
   const totalPL = result.summary.totalRealizedPL + unrealizedPL;
   const apr = yearsElapsed > 0
-    ? (result.summary.totalRealizedPL / capitalAtRisk) / yearsElapsed * 100
+    ? (totalPL / capitalAtRisk) / yearsElapsed // Removed the * 100 since meanAPR displays it * 100 later
     : 0;
-  const maxDrawdown = computeMaxDrawdown(result.dailyStates);
+  const maxDrawdown = computeMaxDrawdown(result.dailyStates, capitalAtRisk);
 
   const p0 = prices[0];
   const pN = prices[prices.length - 1];

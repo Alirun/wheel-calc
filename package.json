@@ -18,6 +18,8 @@
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
     "rimraf": "^5.0.5",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "vitest": "^4.0.18"
   },
   "engines": {

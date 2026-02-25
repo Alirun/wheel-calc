@@ -96,10 +96,10 @@ function oneOf<T extends string>(val: unknown, def: T, allowed: T[]): T {
 export function defaultMarketValues(): MarketPresetValues {
   return {
     startPrice: 2500,
-    days: 30,
+    days: 365,
     annualVol: 80,
     annualDrift: 0,
-    numSimulations: 200,
+    numSimulations: 1000,
     model: "gbm",
     kappa: 2.0,
     theta: 0.64,
@@ -147,10 +147,10 @@ export function validateMarketValues(raw: unknown): MarketPresetValues {
   const r = (typeof raw === "object" && raw !== null) ? raw as Record<string, unknown> : {};
   return {
     startPrice: num(r.startPrice, d.startPrice, 500, 8000),
-    days: num(r.days, d.days, 30, 365),
+    days: num(r.days, d.days, 30, 3650),
     annualVol: num(r.annualVol, d.annualVol, 10, 200),
-    annualDrift: num(r.annualDrift, d.annualDrift, -100, 100),
-    numSimulations: num(r.numSimulations, d.numSimulations, 10, 2000),
+    annualDrift: num(r.annualDrift, d.annualDrift, -200, 200),
+    numSimulations: num(r.numSimulations, d.numSimulations, 10, 10000),
     model: oneOf(r.model, d.model, ["gbm", "heston", "jump", "heston-jump"]),
     kappa: num(r.kappa, d.kappa, 0.5, 10),
     theta: num(r.theta, d.theta, 0.04, 2.0),
@@ -203,24 +203,49 @@ export const MARKET_BUILT_INS: Preset<MarketPresetValues>[] = [
     createdAt: "2024-01-01T00:00:00.000Z"
   },
   {
-    name: "High Vol",
+    name: "Bull Run",
     values: {
       ...defaultMarketValues(),
+      annualDrift: 120,
+      annualVol: 60,
+      model: "gbm"
+    },
+    builtIn: true,
+    createdAt: "2024-01-01T00:00:00.000Z"
+  },
+  {
+    name: "Bear Market",
+    values: {
+      ...defaultMarketValues(),
+      annualDrift: -70,
+      annualVol: 110,
+      model: "heston-jump",
+      rho: -0.8,
+      lambda: 15,
+      muJ: -0.15,
+      sigmaJ: 0.10
+    },
+    builtIn: true,
+    createdAt: "2024-01-01T00:00:00.000Z"
+  },
+  {
+    name: "High-Vol Sideways",
+    values: {
+      ...defaultMarketValues(),
+      annualDrift: 0,
       annualVol: 150,
       model: "heston",
-      kappa: 1.5,
-      theta: 1.0,
-      sigma: 0.8,
       rho: -0.6
     },
     builtIn: true,
     createdAt: "2024-01-01T00:00:00.000Z"
   },
   {
-    name: "Low Vol",
+    name: "Calm Market",
     values: {
       ...defaultMarketValues(),
-      annualVol: 40,
+      annualDrift: 5,
+      annualVol: 30,
       model: "gbm"
     },
     builtIn: true,
@@ -230,11 +255,13 @@ export const MARKET_BUILT_INS: Preset<MarketPresetValues>[] = [
     name: "Crash Scenario",
     values: {
       ...defaultMarketValues(),
-      model: "jump",
+      model: "heston-jump",
       annualDrift: -30,
+      annualVol: 100,
       lambda: 20,
-      muJ: -0.08,
-      sigmaJ: 0.12
+      muJ: -0.20,
+      sigmaJ: 0.15,
+      rho: -0.9
     },
     builtIn: true,
     createdAt: "2024-01-01T00:00:00.000Z"
