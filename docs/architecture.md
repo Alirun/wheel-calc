@@ -16,6 +16,7 @@ black-scholes.ts       ← option pricing, delta, strike-finding (zero deps)
 price-gen.ts           ← seeded price series: GBM, Heston, jump diffusion, combined (zero deps)
 monte-carlo.ts         ← MC runner (imports price-gen, strategy/)
 insights.ts            ← insight engine: evaluates MC results into actionable observations (imports monte-carlo, strategy/types)
+presets.ts             ← preset CRUD + validation for market/strategy configs; injectable StorageBackend (zero deps)
 deribit.ts             ← Deribit public API fetch wrappers (zero deps)
 strategy/
   types.ts             ← Signal, Event, MarketSnapshot, PortfolioState, Phase, Config
@@ -34,6 +35,7 @@ monte-carlo → strategy/simulate → strategy/strategy → strategy/rules → b
                                 → strategy/state
             → price-gen
 insights → monte-carlo (types only), strategy/types (types only)
+presets (standalone)
 deribit (standalone)
 ```
 
@@ -52,7 +54,11 @@ Page navigation is configured in `observablehq.config.js` (`pages` array).
 ## Data Flow
 
 ```
-UI inputs (sliders/toggles)
+localStorage (wheel-calc:market-presets, wheel-calc:strategy-presets)
+  ↓
+getMarketDefaults() / getStrategyDefaults()   ← called once at page load
+  ↓
+UI inputs (sliders/toggles, initialised from preset values)
   ↓
 marketParams + wheelConfig
   ↓

@@ -11,6 +11,14 @@ Generate random ETH price series and Monte Carlo the Wheel strategy across many 
 import {runMonteCarlo, rerunSingle} from "./components/monte-carlo.js";
 import {defaultRules} from "./components/strategy/rules.js";
 import {generateInsights} from "./components/insights.js";
+import {
+  getMarketDefaults, getStrategyDefaults,
+  loadPresetStore, savePreset, deletePreset, setDefaultPreset,
+  MARKET_KEY, STRATEGY_KEY, MARKET_BUILT_INS, STRATEGY_BUILT_INS,
+  validateMarketValues, validateStrategyValues
+} from "./components/presets.js";
+const md = getMarketDefaults();
+const sd = getStrategyDefaults();
 ```
 
 <div class="grid grid-cols-3">
@@ -18,23 +26,79 @@ import {generateInsights} from "./components/insights.js";
     <h3>Market</h3>
 
 ```js
+const marketStore = loadPresetStore(MARKET_KEY, MARKET_BUILT_INS, validateMarketValues);
+const marketToolbar = (() => {
+  const div = document.createElement("div");
+  div.style.cssText = "display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;margin-bottom:0.75rem;";
+  const select = document.createElement("select");
+  select.style.cssText = "flex:1;min-width:120px;padding:2px 4px;font-size:0.82rem;";
+  marketStore.presets.forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p.name;
+    opt.textContent = p.name + (p.builtIn ? " ★" : "");
+    if (p.name === marketStore.defaultPresetName) opt.selected = true;
+    select.appendChild(opt);
+  });
+  const btn = (label, title) => {
+    const b = document.createElement("button");
+    b.textContent = label; b.title = title;
+    b.style.cssText = "padding:2px 8px;font-size:0.8rem;cursor:pointer;";
+    return b;
+  };
+  const loadBtn = btn("Load", "Apply this preset now (reloads page)");
+  const saveBtn = btn("Save", "Overwrite preset with current form values");
+  const saveAsBtn = btn("Save As…", "Save current values as a new preset");
+  const setDefaultBtn = btn("Set Default", "Use this preset on next page load");
+  const deleteBtn = btn("Delete", "Delete this user preset");
+  [select, loadBtn, saveBtn, saveAsBtn, setDefaultBtn, deleteBtn].forEach(el => div.appendChild(el));
+  loadBtn.addEventListener("click", () => {
+    setDefaultPreset(MARKET_KEY, select.value);
+    location.reload();
+  });
+  saveBtn.addEventListener("click", () => {
+    const values = {...marketParams, ...(hestonParams ?? {}), ...(jumpParams ?? {}), ...costParams};
+    savePreset(MARKET_KEY, select.value, values);
+  });
+  saveAsBtn.addEventListener("click", () => {
+    const name = prompt("Preset name:");
+    if (!name) return;
+    const values = {...marketParams, ...(hestonParams ?? {}), ...(jumpParams ?? {}), ...costParams};
+    savePreset(MARKET_KEY, name, values);
+    setDefaultPreset(MARKET_KEY, name);
+    location.reload();
+  });
+  setDefaultBtn.addEventListener("click", () => {
+    setDefaultPreset(MARKET_KEY, select.value);
+  });
+  deleteBtn.addEventListener("click", () => {
+    const preset = marketStore.presets.find(p => p.name === select.value);
+    if (preset?.builtIn) { alert("Built-in presets (★) cannot be deleted."); return; }
+    deletePreset(MARKET_KEY, select.value);
+    location.reload();
+  });
+  return div;
+})();
+display(marketToolbar);
+```
+
+```js
 const marketParams = view(Inputs.form({
-  startPrice: Inputs.range([500, 8000], {value: 2500, step: 50, label: "Start price (USD)"}),
-  days: Inputs.range([30, 365], {value: 30, step: 1, label: "Days to simulate"}),
-  annualVol: Inputs.range([10, 200], {value: 80, step: 5, label: "Annual volatility (%)"}),
-  annualDrift: Inputs.range([-100, 100], {value: 0, step: 5, label: "Annual drift (%)"}),
-  numSimulations: Inputs.range([10, 2000], {value: 200, step: 10, label: "Simulations"}),
-  model: Inputs.select(["gbm", "heston", "jump", "heston-jump"], {value: "gbm", label: "Price model"})
+  startPrice: Inputs.range([500, 8000], {value: md.startPrice, step: 50, label: "Start price (USD)"}),
+  days: Inputs.range([30, 365], {value: md.days, step: 1, label: "Days to simulate"}),
+  annualVol: Inputs.range([10, 200], {value: md.annualVol, step: 5, label: "Annual volatility (%)"}),
+  annualDrift: Inputs.range([-100, 100], {value: md.annualDrift, step: 5, label: "Annual drift (%)"}),
+  numSimulations: Inputs.range([10, 2000], {value: md.numSimulations, step: 10, label: "Simulations"}),
+  model: Inputs.select(["gbm", "heston", "jump", "heston-jump"], {value: md.model, label: "Price model"})
 }));
 ```
 
 ```js
 const hestonParams = marketParams.model === "heston" || marketParams.model === "heston-jump"
   ? view(Inputs.form({
-      kappa: Inputs.range([0.5, 10], {value: 2.0, step: 0.1, label: "κ (mean-reversion speed)"}),
-      theta: Inputs.range([0.04, 2.0], {value: 0.64, step: 0.01, label: "θ (long-run variance)"}),
-      sigma: Inputs.range([0.1, 2.0], {value: 0.5, step: 0.05, label: "ξ (vol-of-vol)"}),
-      rho: Inputs.range([-0.99, 0.99], {value: -0.7, step: 0.05, label: "ρ (correlation)"})
+      kappa: Inputs.range([0.5, 10], {value: md.kappa, step: 0.1, label: "κ (mean-reversion speed)"}),
+      theta: Inputs.range([0.04, 2.0], {value: md.theta, step: 0.01, label: "θ (long-run variance)"}),
+      sigma: Inputs.range([0.1, 2.0], {value: md.sigma, step: 0.05, label: "ξ (vol-of-vol)"}),
+      rho: Inputs.range([-0.99, 0.99], {value: md.rho, step: 0.05, label: "ρ (correlation)"})
     }))
   : null;
 ```
@@ -42,9 +106,9 @@ const hestonParams = marketParams.model === "heston" || marketParams.model === "
 ```js
 const jumpParams = marketParams.model === "jump" || marketParams.model === "heston-jump"
   ? view(Inputs.form({
-      lambda: Inputs.range([0, 50], {value: 10, step: 1, label: "λ (jumps/year)"}),
-      muJ: Inputs.range([-0.2, 0.2], {value: 0, step: 0.01, label: "μJ (mean jump size)"}),
-      sigmaJ: Inputs.range([0.01, 0.3], {value: 0.05, step: 0.01, label: "σJ (jump vol)"})
+      lambda: Inputs.range([0, 50], {value: md.lambda, step: 1, label: "λ (jumps/year)"}),
+      muJ: Inputs.range([-0.2, 0.2], {value: md.muJ, step: 0.01, label: "μJ (mean jump size)"}),
+      sigmaJ: Inputs.range([0.01, 0.3], {value: md.sigmaJ, step: 0.01, label: "σJ (jump vol)"})
     }))
   : null;
 ```
@@ -54,9 +118,9 @@ const jumpParams = marketParams.model === "jump" || marketParams.model === "hest
 
 ```js
 const costParams = view(Inputs.form({
-  riskFreeRate: Inputs.range([0, 10], {value: 5, step: 0.5, label: "Risk-free rate (%)"}),
-  bidAskSpreadPct: Inputs.range([0, 20], {value: 5, step: 1, label: "Bid-ask spread (%)"}),
-  feePerTrade: Inputs.range([0, 10], {value: 0.50, step: 0.10, label: "Fee per trade (USD)"})
+  riskFreeRate: Inputs.range([0, 10], {value: md.riskFreeRate, step: 0.5, label: "Risk-free rate (%)"}),
+  bidAskSpreadPct: Inputs.range([0, 20], {value: md.bidAskSpreadPct, step: 1, label: "Bid-ask spread (%)"}),
+  feePerTrade: Inputs.range([0, 10], {value: md.feePerTrade, step: 0.10, label: "Fee per trade (USD)"})
 }));
 ```
 
@@ -65,11 +129,65 @@ const costParams = view(Inputs.form({
     <h3>Strategy</h3>
 
 ```js
+const strategyStore = loadPresetStore(STRATEGY_KEY, STRATEGY_BUILT_INS, validateStrategyValues);
+const strategyToolbar = (() => {
+  const div = document.createElement("div");
+  div.style.cssText = "display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;margin-bottom:0.75rem;";
+  const select = document.createElement("select");
+  select.style.cssText = "flex:1;min-width:120px;padding:2px 4px;font-size:0.82rem;";
+  strategyStore.presets.forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p.name;
+    opt.textContent = p.name + (p.builtIn ? " ★" : "");
+    if (p.name === strategyStore.defaultPresetName) opt.selected = true;
+    select.appendChild(opt);
+  });
+  const btn = (label, title) => {
+    const b = document.createElement("button");
+    b.textContent = label; b.title = title;
+    b.style.cssText = "padding:2px 8px;font-size:0.8rem;cursor:pointer;";
+    return b;
+  };
+  const loadBtn = btn("Load", "Apply this preset now (reloads page)");
+  const saveBtn = btn("Save", "Overwrite preset with current form values");
+  const saveAsBtn = btn("Save As…", "Save current values as a new preset");
+  const setDefaultBtn = btn("Set Default", "Use this preset on next page load");
+  const deleteBtn = btn("Delete", "Delete this user preset");
+  [select, loadBtn, saveBtn, saveAsBtn, setDefaultBtn, deleteBtn].forEach(el => div.appendChild(el));
+  loadBtn.addEventListener("click", () => {
+    setDefaultPreset(STRATEGY_KEY, select.value);
+    location.reload();
+  });
+  saveBtn.addEventListener("click", () => {
+    savePreset(STRATEGY_KEY, select.value, strategyParams);
+  });
+  saveAsBtn.addEventListener("click", () => {
+    const name = prompt("Preset name:");
+    if (!name) return;
+    savePreset(STRATEGY_KEY, name, strategyParams);
+    setDefaultPreset(STRATEGY_KEY, name);
+    location.reload();
+  });
+  setDefaultBtn.addEventListener("click", () => {
+    setDefaultPreset(STRATEGY_KEY, select.value);
+  });
+  deleteBtn.addEventListener("click", () => {
+    const preset = strategyStore.presets.find(p => p.name === select.value);
+    if (preset?.builtIn) { alert("Built-in presets (★) cannot be deleted."); return; }
+    deletePreset(STRATEGY_KEY, select.value);
+    location.reload();
+  });
+  return div;
+})();
+display(strategyToolbar);
+```
+
+```js
 const coreParams = view(Inputs.form({
-  targetDelta: Inputs.range([0.05, 0.50], {value: 0.30, step: 0.01, label: "Target delta (puts)"}),
-  ivPremiumPct: Inputs.range([0, 50], {value: 15, step: 1, label: "IV premium over RV (%)"}),
-  cycleLengthDays: Inputs.range([1, 30], {value: 7, step: 1, label: "Cycle length (days)"}),
-  contracts: Inputs.range([1, 20], {value: 1, step: 1, label: "Contracts (1 = 1 ETH)"}),
+  targetDelta: Inputs.range([0.05, 0.50], {value: sd.targetDelta, step: 0.01, label: "Target delta (puts)"}),
+  ivPremiumPct: Inputs.range([0, 50], {value: sd.ivPremiumPct, step: 1, label: "IV premium over RV (%)"}),
+  cycleLengthDays: Inputs.range([1, 30], {value: sd.cycleLengthDays, step: 1, label: "Cycle length (days)"}),
+  contracts: Inputs.range([1, 20], {value: sd.contracts, step: 1, label: "Contracts (1 = 1 ETH)"}),
 }));
 ```
 
@@ -78,11 +196,11 @@ const coreParams = view(Inputs.form({
 
 ```js
 const adaptiveCallsParams = view(Inputs.form({
-  adaptiveCalls: Inputs.toggle({label: "Adaptive call delta", value: true}),
-  minCallDelta: Inputs.range([0.05, 0.40], {value: 0.10, step: 0.01, label: "Min call delta (underwater)"}),
-  maxCallDelta: Inputs.range([0.20, 0.70], {value: 0.50, step: 0.01, label: "Max call delta (profitable)"}),
-  skipThresholdPct: Inputs.range([0, 2], {value: 0.1, step: 0.05, label: "Skip threshold (%)"}),
-  minStrikeAtCost: Inputs.toggle({label: "Min strike at cost basis", value: true}),
+  adaptiveCalls: Inputs.toggle({label: "Adaptive call delta", value: sd.adaptiveCalls}),
+  minCallDelta: Inputs.range([0.05, 0.40], {value: sd.minCallDelta, step: 0.01, label: "Min call delta (underwater)"}),
+  maxCallDelta: Inputs.range([0.20, 0.70], {value: sd.maxCallDelta, step: 0.01, label: "Max call delta (profitable)"}),
+  skipThresholdPct: Inputs.range([0, 2], {value: sd.skipThresholdPct, step: 0.05, label: "Skip threshold (%)"}),
+  minStrikeAtCost: Inputs.toggle({label: "Min strike at cost basis", value: sd.minStrikeAtCost}),
 }));
 ```
 
@@ -91,10 +209,10 @@ const adaptiveCallsParams = view(Inputs.form({
 
 ```js
 const ivRvParams = view(Inputs.form({
-  ivRvSpread: Inputs.toggle({label: "IV/RV spread scaling", value: true}),
-  ivRvLookback: Inputs.range([5, 60], {value: 20, step: 1, label: "RV lookback (days)"}),
-  ivRvMinMult: Inputs.range([0.5, 1.0], {value: 0.8, step: 0.05, label: "Min delta multiplier"}),
-  ivRvMaxMult: Inputs.range([1.0, 2.0], {value: 1.3, step: 0.05, label: "Max delta multiplier"}),
+  ivRvSpread: Inputs.toggle({label: "IV/RV spread scaling", value: sd.ivRvSpread}),
+  ivRvLookback: Inputs.range([5, 60], {value: sd.ivRvLookback, step: 1, label: "RV lookback (days)"}),
+  ivRvMinMult: Inputs.range([0.5, 1.0], {value: sd.ivRvMinMult, step: 0.05, label: "Min delta multiplier"}),
+  ivRvMaxMult: Inputs.range([1.0, 2.0], {value: sd.ivRvMaxMult, step: 0.05, label: "Max delta multiplier"}),
 }));
 ```
 
@@ -103,9 +221,9 @@ const ivRvParams = view(Inputs.form({
 
 ```js
 const rollCallParams = view(Inputs.form({
-  rollCall: Inputs.toggle({label: "Roll up & out", value: false}),
-  rollITMThreshold: Inputs.range([1, 20], {value: 5, step: 1, label: "ITM threshold (%)"}),
-  rollRequireCredit: Inputs.toggle({label: "Require net credit to roll", value: true}),
+  rollCall: Inputs.toggle({label: "Roll up & out", value: sd.rollCall}),
+  rollITMThreshold: Inputs.range([1, 20], {value: sd.rollITMThreshold, step: 1, label: "ITM threshold (%)"}),
+  rollRequireCredit: Inputs.toggle({label: "Require net credit to roll", value: sd.rollRequireCredit}),
 }));
 ```
 
@@ -114,10 +232,10 @@ const rollCallParams = view(Inputs.form({
 
 ```js
 const rollPutParams = view(Inputs.form({
-  rollPut: Inputs.toggle({label: "Roll puts (DTE ladder)", value: false}),
-  rollPutInitialDTE: Inputs.range([14, 60], {value: 30, step: 1, label: "Initial put DTE"}),
-  rollPutWhenBelow: Inputs.range([7, 30], {value: 14, step: 1, label: "Roll when DTE below"}),
-  rollPutRequireCredit: Inputs.toggle({label: "Require net credit (puts)", value: true}),
+  rollPut: Inputs.toggle({label: "Roll puts (DTE ladder)", value: sd.rollPut}),
+  rollPutInitialDTE: Inputs.range([14, 60], {value: sd.rollPutInitialDTE, step: 1, label: "Initial put DTE"}),
+  rollPutWhenBelow: Inputs.range([7, 30], {value: sd.rollPutWhenBelow, step: 1, label: "Roll when DTE below"}),
+  rollPutRequireCredit: Inputs.toggle({label: "Require net credit (puts)", value: sd.rollPutRequireCredit}),
 }));
 ```
 
@@ -126,9 +244,9 @@ const rollPutParams = view(Inputs.form({
 
 ```js
 const stopLossParams = view(Inputs.form({
-  stopLoss: Inputs.toggle({label: "Stop-loss", value: false}),
-  stopLossDrawdown: Inputs.range([5, 50], {value: 30, step: 1, label: "Drawdown threshold (%)"}),
-  stopLossCooldown: Inputs.range([0, 30], {value: 7, step: 1, label: "Cooldown days"}),
+  stopLoss: Inputs.toggle({label: "Stop-loss", value: sd.stopLoss}),
+  stopLossDrawdown: Inputs.range([5, 50], {value: sd.stopLossDrawdown, step: 1, label: "Drawdown threshold (%)"}),
+  stopLossCooldown: Inputs.range([0, 30], {value: sd.stopLossCooldown, step: 1, label: "Cooldown days"}),
 }));
 ```
 

@@ -10,3 +10,4 @@ Wheel strategy options simulator for ETH. Observable Framework app with pure Typ
 | Strategy | [strategy.md](strategy.md) | State machine (4 phases), signal-based rules, executor pattern, config, trade lifecycle |
 | Simulation | [simulation.md](simulation.md) | Price generation, Monte Carlo runner, metrics |
 | Insights | [insights.md](insights.md) | Insight rules, thresholds, when to update |
+| Presets | [presets.md](presets.md) | localStorage schema, built-in presets, public API, UI toolbar behavior |
