@@ -84,13 +84,30 @@ We employ three main strategies to find the best presets:
 - **Conclusion:** **The wheel is viable at 25–50% vol with mild positive drift, but the optimal strategy is regime-specific.** At 50% vol, conservative parameterization (low delta 0.10, long cycle 30-day) delivers 0.42 Sharpe with +2.8% alpha. At 25% vol, the opposite works: moderate delta (0.15–0.25) with short 3-day cycles delivers 0.35 Sharpe with +6–10% alpha but higher tail risk. High delta is a return trap at 50% vol but viable at 25% vol — the delta-risk relationship is non-linear and vol-dependent.
 - **Action Taken:** Full analysis in `research/sweep2/SWEEP2_ANALYSIS.md`. Preset candidates identified ("Conservative Income" at 50% vol, "Active Premium" at 25% vol).
 
+### Experiment 3: Vol Boundary Search
+- **Goal:** Find the exact vol level (between 50% and 150%) where Sharpe crosses zero — defining the "wheel deployment zone."
+- **Market Baseline:** GBM with stochastic IV (OU process, κ=5.0, ξ=0.5, VRP=15%), 5% annual drift, vol range 40%–155%.
+- **Approach:** Two-phase search. Phase 1: coarse sweep across 24 vol levels (5% increments) × 3 strategies (Conservative δ0.10/30d, Moderate δ0.20/14d, Active δ0.20/3d) × 1,000 paths. Phase 2: fine-grained 1% increment search around detected crossover points. 80,000 total simulation paths.
+- **Results:**
+  - **Conservative (δ0.10/30d):** Sharpe positive across entire range (40%–155%). Peak Sharpe **0.448 at 60% vol** (8.19% APR, +4.61% alpha, 23.7% MaxDD). No vol ceiling found.
+  - **Moderate (δ0.20/14d):** Sharpe crosses zero at **~82% vol**. Peak Sharpe 0.153 at 40% vol (11.64% APR, +7.51% alpha, 28.5% MaxDD).
+  - **Active (δ0.20/3d):** Sharpe crosses zero at **~77% vol**. Peak Sharpe 0.157 at 40% vol (14.63% APR, +10.51% alpha, 32.2% MaxDD).
+- **Key Findings:**
+  1. **The conservative strategy has no practical vol ceiling.** δ0.10/30d maintains positive Sharpe even at 155% vol (0.039). Low delta minimizes gamma exposure; 30-day cycles provide time diversification.
+  2. **Higher delta = lower vol ceiling.** The relationship is monotonic: δ0.10 → no ceiling, δ0.20/14d → 82%, δ0.20/3d → 77%. Higher delta amplifies gamma-driven assignment losses that overwhelm premium at high vol.
+  3. **The sweet spot is 55%–65% vol.** Conservative strategy peaks at 60% — vol is high enough for meaningful premium but low enough that assignment losses don't consume it.
+  4. **Sharpe and APR move in opposite directions.** At 155% vol, conservative earns 20.65% APR (4× the 40% vol return) but Sharpe is only 0.039. Classic return trap.
+  5. **Alpha is universal but misleading.** The wheel beats buy-and-hold at every vol level tested in raw return terms. But positive alpha with negative Sharpe means you're not compensated for the risk.
+- **Conclusion:** **The vol boundary is strategy-dependent, not universal.** Conservative parameterization (δ0.10/30d) is viable at any vol below ~155%. Moderate/active strategies have firm ceilings at 82%/77% vol respectively. The optimal deployment zone is 55%–65% vol for all strategies. Above 80% vol, only conservative parameterization should be used. For live deployment: monitor 30-day realized vol; exit moderate/active when RV > 75%, exit conservative when RV > 150%.
+- **Action Taken:** Full analysis in `research/sweep3/SWEEP3_ANALYSIS.md`. Deployment zone boundaries established for all three strategy profiles.
+
 ---
 
 <!-- NOTE: Keep this section at the end of the file. New experiments append above this section; new follow-up ideas append to the list below. -->
 ## Recommended Next Experiments
 
-- **Experiment 3: Vol Boundary Search** — Find the exact vol level (between 50% and 150%) where Sharpe crosses zero. This defines the "wheel deployment zone" — the vol range where the strategy has positive edge.
 - **Experiment 4: Regime Filter** — Only sell premium when IV > RV (positive variance risk premium). Cash otherwise. Now that the simulator has stochastic IV (OU process), this test is meaningful — IV fluctuates independently of RV, creating natural entry/exit signals.
 - **Experiment 5: Defined-Risk Spreads** — Same grid but with vertical spreads (5-wide, 10-wide) to cap max loss per cycle and improve Sharpe by truncating the gamma-driven drawdown tails that destroyed naked puts at high vol.
 - **Experiment 6: Multi-Year Simulation** — Run the same grid over 2–5 year horizons to test if the edge compounds or mean-reverts over longer timeframes.
 - **Experiment 7: Kelly Sizing** — Replace fixed 1-contract sizing with fractional Kelly to see if bankroll management rescues the aggressive parameterizations. Lowest priority: no sizing method creates an edge where none exists, but may help in marginal regimes.
+- **Experiment 8: Drift Sensitivity** — Repeat Experiment 3 with 0% drift and 10% drift to determine how the vol boundaries shift with the underlying trend. The conservative strategy's resilience may depend on the 5% drift assumption.
