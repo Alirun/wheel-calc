@@ -1,5 +1,5 @@
 import {generatePrices} from "./price-gen.js";
-import type {PriceModel, HestonParams, JumpParams} from "./price-gen.js";
+import type {PriceModel, HestonParams, JumpParams, IVParams} from "./price-gen.js";
 import {simulate} from "./strategy/simulate.js";
 import {defaultRules} from "./strategy/rules.js";
 import type {StrategyConfig, SimulationResult, SignalLogEntry} from "./strategy/types.js";
@@ -12,6 +12,7 @@ export interface MarketParams {
   model?: PriceModel;
   heston?: HestonParams;
   jump?: JumpParams;
+  ivParams?: IVParams;
 }
 
 export interface RunSummary {
@@ -163,7 +164,7 @@ function summarizeRun(
   const unrealizedPL = lastDay ? lastDay.unrealizedPL : 0;
   const totalPL = result.summary.totalRealizedPL + unrealizedPL;
   const apr = yearsElapsed > 0
-    ? (totalPL / capitalAtRisk) / yearsElapsed // Removed the * 100 since meanAPR displays it * 100 later
+    ? (totalPL / capitalAtRisk) / yearsElapsed * 100
     : 0;
   const maxDrawdown = computeMaxDrawdown(result.dailyStates, capitalAtRisk);
 
@@ -247,6 +248,7 @@ export function runMonteCarlo(
       model: market.model,
       heston: market.heston,
       jump: market.jump,
+      ivParams: market.ivParams,
     });
 
     const result = simulate(prices, rules, config, ivPath);
@@ -323,6 +325,7 @@ export function rerunSingle(
     model: market.model,
     heston: market.heston,
     jump: market.jump,
+    ivParams: market.ivParams,
   });
   const rules = defaultRules();
   const result = simulate(prices, rules, config, ivPath);

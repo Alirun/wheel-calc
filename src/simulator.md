@@ -56,13 +56,13 @@ const marketToolbar = (() => {
     location.reload();
   });
   saveBtn.addEventListener("click", () => {
-    const values = {...marketParams, ...(hestonParams ?? {}), ...(jumpParams ?? {}), ...costParams};
+    const values = {...marketParams, ...(hestonParams ?? {}), ...(jumpParams ?? {}), ...(ivDynamicsParams ?? {}), ...costParams};
     savePreset(MARKET_KEY, select.value, values);
   });
   saveAsBtn.addEventListener("click", () => {
     const name = prompt("Preset name:");
     if (!name) return;
-    const values = {...marketParams, ...(hestonParams ?? {}), ...(jumpParams ?? {}), ...costParams};
+    const values = {...marketParams, ...(hestonParams ?? {}), ...(jumpParams ?? {}), ...(ivDynamicsParams ?? {}), ...costParams};
     savePreset(MARKET_KEY, name, values);
     setDefaultPreset(MARKET_KEY, name);
     location.reload();
@@ -109,6 +109,16 @@ const jumpParams = marketParams.model === "jump" || marketParams.model === "hest
       lambda: Inputs.range([0, 50], {value: md.lambda, step: 1, label: "λ (jumps/year)"}),
       muJ: Inputs.range([-0.2, 0.2], {value: md.muJ, step: 0.01, label: "μJ (mean jump size)"}),
       sigmaJ: Inputs.range([0.01, 0.3], {value: md.sigmaJ, step: 0.01, label: "σJ (jump vol)"})
+    }))
+  : null;
+```
+
+```js
+const ivDynamicsParams = marketParams.model === "gbm" || marketParams.model === "jump"
+  ? view(Inputs.form({
+      ivMeanReversion: Inputs.range([0.5, 20], {value: md.ivMeanReversion, step: 0.5, label: "IV mean-reversion (κ)"}),
+      ivVolOfVol: Inputs.range([0.05, 3.0], {value: md.ivVolOfVol, step: 0.05, label: "IV vol-of-vol (ξ)"}),
+      vrpPremiumPct: Inputs.range([0, 50], {value: md.vrpPremiumPct, step: 1, label: "IV premium over RV (%)"})
     }))
   : null;
 ```
@@ -185,7 +195,6 @@ display(strategyToolbar);
 ```js
 const coreParams = view(Inputs.form({
   targetDelta: Inputs.range([0.05, 0.50], {value: sd.targetDelta, step: 0.01, label: "Target delta (puts)"}),
-  ivPremiumPct: Inputs.range([0, 50], {value: sd.ivPremiumPct, step: 1, label: "IV premium over RV (%)"}),
   cycleLengthDays: Inputs.range([1, 30], {value: sd.cycleLengthDays, step: 1, label: "Cycle length (days)"}),
   contracts: Inputs.range([1, 20], {value: sd.contracts, step: 1, label: "Contracts (1 = 1 ETH)"}),
 }));
@@ -280,7 +289,8 @@ ${rulesHtml}
 
 ```js
 const annualVol = marketParams.annualVol / 100;
-const impliedVol = annualVol * (1 + strategyParams.ivPremiumPct / 100);
+const vrpPct = ivDynamicsParams?.vrpPremiumPct ?? 15;
+const impliedVol = annualVol * (1 + vrpPct / 100);
 
 const market = {
   startPrice: marketParams.startPrice,
@@ -289,7 +299,12 @@ const market = {
   annualDrift: marketParams.annualDrift / 100,
   model: marketParams.model,
   ...(hestonParams ? {heston: hestonParams} : {}),
-  ...(jumpParams ? {jump: jumpParams} : {})
+  ...(jumpParams ? {jump: jumpParams} : {}),
+  ...(ivDynamicsParams ? {ivParams: {
+    meanReversion: ivDynamicsParams.ivMeanReversion,
+    volOfVol: ivDynamicsParams.ivVolOfVol,
+    vrpOffset: annualVol * vrpPct / 100
+  }} : {})
 };
 
 const strategyConfig = {

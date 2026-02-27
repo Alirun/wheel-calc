@@ -22,6 +22,12 @@ export interface PriceGenResult {
   ivPath?: number[];
 }
 
+export interface IVParams {
+  meanReversion: number;   // speed of mean-reversion (e.g., 5.0 → half-life ~50 days)
+  volOfVol: number;        // annualized vol-of-vol for IV noise (e.g., 0.5)
+  vrpOffset: number;       // variance risk premium: IV mean = annualVol + vrpOffset (decimal, e.g., 0.02)
+}
+
 export interface PriceGenConfig {
   startPrice: number;
   days: number;
@@ -31,6 +37,7 @@ export interface PriceGenConfig {
   model?: PriceModel;
   heston?: HestonParams;
   jump?: JumpParams;
+  ivParams?: IVParams;
 }
 
 export function splitmix32(seed: number): () => number {
@@ -53,6 +60,30 @@ export function boxMuller(rand: () => number): number {
   return Math.sqrt(-2 * Math.log(u1 || 1e-10)) * Math.cos(2 * Math.PI * u2);
 }
 
+export function generateIVPath(
+  days: number,
+  annualVol: number,
+  ivParams: IVParams,
+  rand: () => number,
+): number[] {
+  const {meanReversion, volOfVol, vrpOffset} = ivParams;
+  const longRunIV = annualVol + vrpOffset;
+  const dt = 1 / 365;
+  const sqrtDt = Math.sqrt(dt);
+  const floor = 0.05;
+
+  const ivPath: number[] = [Math.max(longRunIV, floor)];
+  let iv = ivPath[0];
+
+  for (let i = 1; i < days; i++) {
+    const z = boxMuller(rand);
+    iv += meanReversion * (longRunIV - iv) * dt + volOfVol * sqrtDt * z;
+    iv = Math.max(iv, floor);
+    ivPath.push(iv);
+  }
+  return ivPath;
+}
+
 function generatePricesGBM(config: PriceGenConfig, rand: () => number): PriceGenResult {
   const {startPrice, days, annualVol, annualDrift} = config;
   const dt = 1 / 365;
@@ -65,7 +96,12 @@ function generatePricesGBM(config: PriceGenConfig, rand: () => number): PriceGen
     const prev = prices[i - 1];
     prices.push(prev * Math.exp(driftTerm + volTerm * z));
   }
-  return {prices};
+
+  const ivPath = config.ivParams
+    ? generateIVPath(days, annualVol, config.ivParams, rand)
+    : undefined;
+
+  return {prices, ivPath};
 }
 
 function generatePricesHeston(config: PriceGenConfig, rand: () => number): PriceGenResult {
@@ -149,7 +185,12 @@ function generatePricesJump(config: PriceGenConfig, rand: () => number): PriceGe
     const prev = prices[i - 1];
     prices.push(prev * Math.exp(driftTerm + volTerm * z + logJump));
   }
-  return {prices};
+
+  const ivPath = config.ivParams
+    ? generateIVPath(days, annualVol, config.ivParams, rand)
+    : undefined;
+
+  return {prices, ivPath};
 }
 
 function generatePricesHestonJump(config: PriceGenConfig, rand: () => number): PriceGenResult {

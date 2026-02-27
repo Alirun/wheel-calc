@@ -1,4 +1,4 @@
-import { MARKET_BUILT_INS, defaultStrategyValues, StrategyPresetValues } from "../../src/components/presets.ts";
+import { MARKET_BUILT_INS, defaultStrategyValues, defaultMarketValues } from "../../src/components/presets.ts";
 import { runMonteCarlo } from "../../src/components/monte-carlo.ts";
 
 async function main() {
@@ -9,8 +9,11 @@ async function main() {
   if (!marketPreset) throw new Error("Preset not found");
   
   // Enforce rigorous simulation params for AI optimization
+  // price-gen expects decimal form; presets store percentages
   const marketConfig: any = {
     ...marketPreset.values,
+    annualVol: marketPreset.values.annualVol / 100,
+    annualDrift: marketPreset.values.annualDrift / 100,
     days: 365,
     numSimulations: 1000, 
     heston: {
@@ -48,13 +51,14 @@ async function main() {
         
         // Build the strategy config mapping exactly to types.ts interface
         const baseConfig = defaultStrategyValues();
+        const baseMarket = defaultMarketValues();
         const strategyConfig: any = {
           targetDelta: delta,
           cycleLengthDays: cycle,
-          impliedVol: marketConfig.annualVol / 100, // Important mapping
-          riskFreeRate: marketConfig.riskFreeRate / 100, // Important mapping
+          impliedVol: marketConfig.annualVol * (1 + baseMarket.vrpPremiumPct / 100),
+          riskFreeRate: marketConfig.riskFreeRate / 100,
           contracts: baseConfig.contracts,
-          bidAskSpreadPct: marketConfig.bidAskSpreadPct / 100, // Ensure percentage
+          bidAskSpreadPct: marketConfig.bidAskSpreadPct / 100,
           feePerTrade: marketConfig.feePerTrade,
           
           // Using skip parameter in adaptive calls config
@@ -91,7 +95,7 @@ async function main() {
           delta,
           cycle,
           skip,
-          meanAPR: (avgAPR * 100).toFixed(2) + "%",
+          meanAPR: avgAPR.toFixed(2) + "%",
           winRate: (winRate * 100).toFixed(1) + "%",
           sharpe: avgSharpe.toFixed(3),
           sortino: avgSortino.toFixed(3),

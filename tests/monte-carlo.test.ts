@@ -24,15 +24,16 @@ describe("computeBenchmarkMaxDD", () => {
     expect(computeBenchmarkMaxDD([100, 110, 120, 130], 1)).toBe(0);
   });
 
-  it("computes drawdown from peak P/L", () => {
-    // prices: 100 → 150 → 120 → 130
-    // P/L:    0   → 50  → 20  → 30
-    // peak P/L = 50, max DD = 50 - 20 = 30
-    expect(computeBenchmarkMaxDD([100, 150, 120, 130], 1)).toBe(30);
+  it("computes drawdown from peak value as percentage", () => {
+    // prices: 100 → 150 → 120 → 130, contracts=1
+    // values: 100 → 150 → 120 → 130
+    // peak = 150, max DD = (150-120)/150 = 0.2
+    expect(computeBenchmarkMaxDD([100, 150, 120, 130], 1)).toBe(0.2);
   });
 
-  it("scales with contracts", () => {
-    expect(computeBenchmarkMaxDD([100, 150, 120, 130], 3)).toBe(90);
+  it("percentage drawdown is independent of contracts", () => {
+    // (peak-trough)/peak is the same regardless of contract count
+    expect(computeBenchmarkMaxDD([100, 150, 120, 130], 3)).toBe(0.2);
   });
 
   it("returns 0 for flat prices", () => {
@@ -40,9 +41,9 @@ describe("computeBenchmarkMaxDD", () => {
   });
 
   it("handles single-day decline from start", () => {
-    // prices: 100 → 80  → P/L: 0 → -20
-    // peak P/L = 0, max DD = 0 - (-20) = 20
-    expect(computeBenchmarkMaxDD([100, 80], 1)).toBe(20);
+    // prices: 100 → 80, contracts=1
+    // peak = 100, val = 80, DD = (100-80)/100 = 0.2
+    expect(computeBenchmarkMaxDD([100, 80], 1)).toBe(0.2);
   });
 });
 

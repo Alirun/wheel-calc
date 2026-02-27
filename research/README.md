@@ -66,9 +66,31 @@ We employ three main strategies to find the best presets:
 - **Conclusion:** **The wheel strategy is not suitable for high-volatility sideways markets.** With 150% annualized vol and zero drift, no parameterization produces a meaningful risk-adjusted return. The strategy has no edge in this regime — premium collected is fully consumed by assignment losses and gamma-driven drawdowns. Attempting to optimize within this environment is futile; the correct move is to not deploy the wheel here at all.
 - **Action Taken:** Results documented in `research/SWEEP1_ANALYSIS.md`. No presets saved — no combination merits a built-in preset for this regime.
 
-### Recommended Next Experiments
+### Experiment 2: Normal-Vol Regime Grid Search
+- **Goal:** Find vol regimes where the wheel generates positive risk-adjusted returns (alpha over buy-and-hold).
+- **Market Baseline:** GBM with stochastic IV (OU process, κ=5.0, ξ=0.5, VRP=15%), 5% annual drift, tested at 25% vol (typical equity) and 50% vol (moderate crypto).
+- **Approach:** Iterative Grid Search sweeping `targetDelta` (0.10–0.40), `cycleLengthDays` (3–30), and `skipThreshold` (0–10%) across 1,000 Monte Carlo paths over 365 days. 180 total combinations. Rolling disabled.
+- **Results:**
+  - **Best Risk-Adjusted (50% vol):** `delta: 0.1, cycle: 30, skip: 0` — 0.417 Sharpe, 6.68% APR, 20.69% Max DD, 71.7% win rate, +2.82% alpha.
+  - **Best Risk-Adjusted (25% vol):** `delta: 0.20, cycle: 3, skip: 0` — 0.352 Sharpe, 13.17% APR, 21.06% Max DD, 62.1% win rate, +8.67% alpha.
+  - **Best Nominal Return:** `vol: 50%, delta: 0.4, cycle: 3, skip: 0` — 21.70% APR but 0.051 Sharpe and 40.18% Max DD. Return trap.
+- **Key Findings:**
+  1. **The wheel generates genuine alpha in normal-vol regimes.** 43.3% of combos had positive Sharpe. 100% had positive mean APR.
+  2. **Stochastic IV reveals divergent optimal strategies by vol level.** 50% vol favors long DTE (30-day); 25% vol favors short DTE (3-day) to capture IV variability.
+  3. **50% vol is the sweet spot for conservative strategies.** `delta: 0.1, cycle: 30` tops 50% vol rankings — unchanged from Experiment 1.
+  4. **Skip threshold always hurts.** Every top strategy uses `skip: 0`.
+  5. **High delta is a return trap.** 21%+ APR at delta 0.4 but Sharpe near zero.
+  6. **Stochastic IV deflated static-IV alpha by 25%.** 50% vol best alpha went from +3.77% (static IV) to +2.82% (stochastic IV), confirming the remaining edge is genuine VRP harvesting.
+- **Conclusion:** **The wheel is viable at 25–50% vol with mild positive drift, but the optimal strategy is regime-specific.** At 50% vol, conservative parameterization (low delta 0.10, long cycle 30-day) delivers 0.42 Sharpe with +2.8% alpha. At 25% vol, the opposite works: moderate delta (0.15–0.25) with short 3-day cycles delivers 0.35 Sharpe with +6–10% alpha but higher tail risk. High delta is a return trap at 50% vol but viable at 25% vol — the delta-risk relationship is non-linear and vol-dependent.
+- **Action Taken:** Full analysis in `research/sweep2/SWEEP2_ANALYSIS.md`. Preset candidates identified ("Conservative Income" at 50% vol, "Active Premium" at 25% vol).
 
-- **Experiment 2: Normal-Vol Regime** — Run identical sweep on 20–30% annual vol (typical equity market) to find where the wheel actually generates alpha. The highest-priority follow-up: if the wheel fails at 150% vol, we need to identify the vol regime where it works.
-- **Experiment 3: Regime Filter** — Only sell premium when realized vol > implied vol (positive variance risk premium). Cash otherwise. Directly motivated by Experiment 1's conclusion: a filter that keeps the wheel out of hostile regimes is the right structural fix.
-- **Experiment 4: Defined-Risk Spreads** — Same grid but with vertical spreads (5-wide, 10-wide) to cap max loss per cycle and improve Sharpe by truncating the gamma-driven drawdown tails that destroyed naked puts.
-- **Experiment 5: Kelly Sizing** — Replace fixed 1-contract sizing with fractional Kelly to see if bankroll management rescues the aggressive parameterizations. Lowest priority: no sizing method creates an edge where none exists, but may help in marginal regimes.
+---
+
+<!-- NOTE: Keep this section at the end of the file. New experiments append above this section; new follow-up ideas append to the list below. -->
+## Recommended Next Experiments
+
+- **Experiment 3: Vol Boundary Search** — Find the exact vol level (between 50% and 150%) where Sharpe crosses zero. This defines the "wheel deployment zone" — the vol range where the strategy has positive edge.
+- **Experiment 4: Regime Filter** — Only sell premium when IV > RV (positive variance risk premium). Cash otherwise. Now that the simulator has stochastic IV (OU process), this test is meaningful — IV fluctuates independently of RV, creating natural entry/exit signals.
+- **Experiment 5: Defined-Risk Spreads** — Same grid but with vertical spreads (5-wide, 10-wide) to cap max loss per cycle and improve Sharpe by truncating the gamma-driven drawdown tails that destroyed naked puts at high vol.
+- **Experiment 6: Multi-Year Simulation** — Run the same grid over 2–5 year horizons to test if the edge compounds or mean-reverts over longer timeframes.
+- **Experiment 7: Kelly Sizing** — Replace fixed 1-contract sizing with fractional Kelly to see if bankroll management rescues the aggressive parameterizations. Lowest priority: no sizing method creates an edge where none exists, but may help in marginal regimes.

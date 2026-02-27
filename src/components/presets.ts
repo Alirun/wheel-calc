@@ -17,11 +17,13 @@ export interface MarketPresetValues {
   riskFreeRate: number;
   bidAskSpreadPct: number;
   feePerTrade: number;
+  ivMeanReversion: number;
+  ivVolOfVol: number;
+  vrpPremiumPct: number;
 }
 
 export interface StrategyPresetValues {
   targetDelta: number;
-  ivPremiumPct: number;
   cycleLengthDays: number;
   contracts: number;
   adaptiveCalls: boolean;
@@ -110,14 +112,16 @@ export function defaultMarketValues(): MarketPresetValues {
     sigmaJ: 0.05,
     riskFreeRate: 5,
     bidAskSpreadPct: 5,
-    feePerTrade: 0.50
+    feePerTrade: 0.50,
+    ivMeanReversion: 5.0,
+    ivVolOfVol: 0.5,
+    vrpPremiumPct: 15
   };
 }
 
 export function defaultStrategyValues(): StrategyPresetValues {
   return {
     targetDelta: 0.30,
-    ivPremiumPct: 15,
     cycleLengthDays: 7,
     contracts: 1,
     adaptiveCalls: true,
@@ -161,7 +165,10 @@ export function validateMarketValues(raw: unknown): MarketPresetValues {
     sigmaJ: num(r.sigmaJ, d.sigmaJ, 0.01, 0.3),
     riskFreeRate: num(r.riskFreeRate, d.riskFreeRate, 0, 10),
     bidAskSpreadPct: num(r.bidAskSpreadPct, d.bidAskSpreadPct, 0, 20),
-    feePerTrade: num(r.feePerTrade, d.feePerTrade, 0, 10)
+    feePerTrade: num(r.feePerTrade, d.feePerTrade, 0, 10),
+    ivMeanReversion: num(r.ivMeanReversion, d.ivMeanReversion, 0.5, 20),
+    ivVolOfVol: num(r.ivVolOfVol, d.ivVolOfVol, 0.05, 3.0),
+    vrpPremiumPct: num(r.vrpPremiumPct, d.vrpPremiumPct, 0, 50)
   };
 }
 
@@ -170,7 +177,6 @@ export function validateStrategyValues(raw: unknown): StrategyPresetValues {
   const r = (typeof raw === "object" && raw !== null) ? raw as Record<string, unknown> : {};
   return {
     targetDelta: num(r.targetDelta, d.targetDelta, 0.05, 0.50),
-    ivPremiumPct: num(r.ivPremiumPct, d.ivPremiumPct, 0, 50),
     cycleLengthDays: num(r.cycleLengthDays, d.cycleLengthDays, 1, 30),
     contracts: num(r.contracts, d.contracts, 1, 20),
     adaptiveCalls: bool(r.adaptiveCalls, d.adaptiveCalls),

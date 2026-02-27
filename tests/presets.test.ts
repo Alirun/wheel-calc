@@ -30,10 +30,10 @@ describe("defaultMarketValues", () => {
   it("returns correct shape", () => {
     const v = defaultMarketValues();
     expect(v.startPrice).toBe(2500);
-    expect(v.days).toBe(30);
+    expect(v.days).toBe(365);
     expect(v.annualVol).toBe(80);
     expect(v.annualDrift).toBe(0);
-    expect(v.numSimulations).toBe(200);
+    expect(v.numSimulations).toBe(1000);
     expect(v.model).toBe("gbm");
     expect(v.kappa).toBe(2.0);
     expect(v.theta).toBe(0.64);
@@ -45,6 +45,9 @@ describe("defaultMarketValues", () => {
     expect(v.riskFreeRate).toBe(5);
     expect(v.bidAskSpreadPct).toBe(5);
     expect(v.feePerTrade).toBe(0.50);
+    expect(v.ivMeanReversion).toBe(5.0);
+    expect(v.ivVolOfVol).toBe(0.5);
+    expect(v.vrpPremiumPct).toBe(15);
   });
 
   it("returns a new object each call", () => {
@@ -56,7 +59,6 @@ describe("defaultStrategyValues", () => {
   it("returns correct shape", () => {
     const v = defaultStrategyValues();
     expect(v.targetDelta).toBe(0.30);
-    expect(v.ivPremiumPct).toBe(15);
     expect(v.cycleLengthDays).toBe(7);
     expect(v.contracts).toBe(1);
     expect(v.adaptiveCalls).toBe(true);
@@ -95,9 +97,9 @@ describe("validateMarketValues", () => {
   it("clamps values to range", () => {
     const result = validateMarketValues({startPrice: 100, days: 1000, annualVol: 999, annualDrift: 200});
     expect(result.startPrice).toBe(500);
-    expect(result.days).toBe(365);
+    expect(result.days).toBe(1000);
     expect(result.annualVol).toBe(200);
-    expect(result.annualDrift).toBe(100);
+    expect(result.annualDrift).toBe(200);
   });
 
   it("clamps negative values to range minimum", () => {
@@ -384,8 +386,8 @@ describe("getMarketDefaults", () => {
 
   it("returns default preset values when one is set", () => {
     const storage = makeStorage();
-    const highVol = MARKET_BUILT_INS.find(p => p.name === "High Vol")!;
-    setDefaultPreset(MARKET_KEY, "High Vol", storage);
+    const highVol = MARKET_BUILT_INS.find(p => p.name === "High-Vol Sideways")!;
+    setDefaultPreset(MARKET_KEY, "High-Vol Sideways", storage);
     expect(getMarketDefaults(storage)).toEqual(highVol.values);
   });
 
@@ -473,15 +475,15 @@ describe("strategy built-in presets", () => {
 });
 
 describe("market built-in presets", () => {
-  it("High Vol preset has expected model and vol", () => {
-    const hv = MARKET_BUILT_INS.find(p => p.name === "High Vol")!;
+  it("High-Vol Sideways preset has expected model and vol", () => {
+    const hv = MARKET_BUILT_INS.find(p => p.name === "High-Vol Sideways")!;
     expect(hv.values.annualVol).toBe(150);
     expect(hv.values.model).toBe("heston");
   });
 
   it("Crash Scenario preset has expected model and drift", () => {
     const crash = MARKET_BUILT_INS.find(p => p.name === "Crash Scenario")!;
-    expect(crash.values.model).toBe("jump");
+    expect(crash.values.model).toBe("heston-jump");
     expect(crash.values.annualDrift).toBe(-30);
   });
 });

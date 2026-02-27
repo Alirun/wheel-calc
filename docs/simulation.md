@@ -21,7 +21,7 @@ Constant-volatility log-normal model. The baseline.
 price[t+1] = price[t] * exp((μ - σ²/2) * dt + σ * √dt * Z)
 ```
 
-Returns `{ prices }` (no `ivPath`).
+Returns `{ prices }` by default. When `ivParams` is configured, also generates a stochastic IV path via the OU process (see below), returning `{ prices, ivPath }`.
 
 #### Heston (Stochastic Volatility)
 
@@ -54,7 +54,7 @@ price[t+1] = price[t] * exp((μ - σ²/2 - k) * dt + σ * √dt * Z + J)
   where J = μ_J + σ_J * z_J  with probability λ·dt, else 0
 ```
 
-Returns `{ prices }` (no `ivPath`).
+Returns `{ prices }` by default. When `ivParams` is configured, also generates a stochastic IV path via the OU process (see below), returning `{ prices, ivPath }`.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -84,10 +84,31 @@ Invariant: `generatePrices({..., seed: 42})` always returns the same series.
 | `model` | `PriceModel?` | `"gbm"` (default), `"heston"`, `"jump"`, `"heston-jump"` |
 | `heston` | `HestonParams?` | Required when model includes "heston" |
 | `jump` | `JumpParams?` | Required when model includes "jump" |
+| `ivParams` | `IVParams?` | Stochastic IV for GBM/Jump models (see below) |
+
+### Stochastic IV Path (OU Process)
+
+For models without intrinsic volatility dynamics (GBM, Jump), an optional Ornstein-Uhlenbeck process generates a mean-reverting IV path:
+
+```
+IV[t+1] = IV[t] + κ * (θ_iv - IV[t]) * dt + ξ * √dt * Z
+  where θ_iv = annualVol + vrpOffset
+  floored at 0.05 (5%)
+```
+
+This separates realized vol (constant in GBM) from implied vol (stochastic), allowing the strategy to respond to changing IV conditions. The `vrpOffset` encodes the variance risk premium (IV > RV on average).
+
+Enabled by setting `ivParams` on `PriceGenConfig`. Has no effect on Heston/Heston-Jump models (which derive IV from their variance process).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `meanReversion` | number | Speed of mean-reversion (κ). Higher = faster snap-back. 5.0 ≈ 50-day half-life |
+| `volOfVol` | number | Annualized vol-of-vol (ξ). Controls day-to-day IV noise |
+| `vrpOffset` | number | IV mean = annualVol + vrpOffset (decimal). 0.02 = 2% permanent IV premium |
 
 ### IV Path Threading
 
-When a model produces `ivPath` (Heston, Heston-Jump), it is passed through:
+When a model produces `ivPath` (Heston, Heston-Jump, or GBM/Jump with `ivParams`), it is passed through:
 
 ```
 generatePrices() → { prices, ivPath }
@@ -99,7 +120,7 @@ simulate() → MarketSnapshot.iv = ivPath[day]
 rules → vol = market.iv ?? config.impliedVol  (used in all BS calls)
 ```
 
-When `ivPath` is absent (GBM, Jump), `market.iv` is undefined and rules fall back to `config.impliedVol`.
+When `ivPath` is absent (GBM/Jump without `ivParams`), `market.iv` is undefined and rules fall back to `config.impliedVol`.
 
 ## Black-Scholes Pricing
 
@@ -139,7 +160,7 @@ Both functions accept `StrategyConfig` (was `WheelConfig`) and internally call `
 |-----------|------|-------------|
 | `startPrice` | number | Initial ETH price |
 | `days` | number | Simulation length |
-| `annualVol` | number | Realized volatility (IV = RV * (1 + ivPremiumPct/100), computed in UI) |
+| `annualVol` | number | Realized volatility (decimal). IV dynamics configured via `ivParams` |
 | `annualDrift` | number | Expected annual drift |
 | `model` | `PriceModel?` | Price model selection (default `"gbm"`) |
 | `heston` | `HestonParams?` | Heston model parameters |

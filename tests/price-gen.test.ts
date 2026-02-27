@@ -1,6 +1,6 @@
 import {describe, it, expect} from "vitest";
-import {generatePrices, splitmix32, boxMuller} from "../src/components/price-gen.js";
-import type {PriceGenConfig} from "../src/components/price-gen.js";
+import {generatePrices, generateIVPath, splitmix32, boxMuller} from "../src/components/price-gen.js";
+import type {PriceGenConfig, IVParams} from "../src/components/price-gen.js";
 
 const baseConfig: PriceGenConfig = {
   startPrice: 2500,
@@ -328,5 +328,122 @@ describe("Heston + Jump combined model", () => {
         expect(isFinite(v)).toBe(true);
       }
     }
+  });
+});
+
+describe("generateIVPath (OU process)", () => {
+  const ivParams: IVParams = {meanReversion: 5.0, volOfVol: 0.5, vrpOffset: 0.02};
+
+  it("returns correct length", () => {
+    const rand = splitmix32(42);
+    const path = generateIVPath(100, 0.80, ivParams, rand);
+    expect(path.length).toBe(100);
+  });
+
+  it("starts at annualVol + vrpOffset", () => {
+    const rand = splitmix32(42);
+    const path = generateIVPath(100, 0.80, ivParams, rand);
+    expect(path[0]).toBeCloseTo(0.82, 10);
+  });
+
+  it("is deterministic", () => {
+    const r1 = splitmix32(42);
+    const r2 = splitmix32(42);
+    const p1 = generateIVPath(200, 0.80, ivParams, r1);
+    const p2 = generateIVPath(200, 0.80, ivParams, r2);
+    expect(p1).toEqual(p2);
+  });
+
+  it("values never go below floor (0.05)", () => {
+    const extremeParams: IVParams = {meanReversion: 0.5, volOfVol: 3.0, vrpOffset: -0.1};
+    for (let seed = 1; seed <= 50; seed++) {
+      const rand = splitmix32(seed);
+      const path = generateIVPath(365, 0.30, extremeParams, rand);
+      for (const iv of path) {
+        expect(iv).toBeGreaterThanOrEqual(0.05);
+        expect(isFinite(iv)).toBe(true);
+      }
+    }
+  });
+
+  it("mean-reverts toward longRunIV on long paths", () => {
+    const params: IVParams = {meanReversion: 10.0, volOfVol: 0.3, vrpOffset: 0.05};
+    const rand = splitmix32(1);
+    const path = generateIVPath(730, 0.50, params, rand);
+    const longRunIV = 0.55;
+    const lastQuarter = path.slice(-180);
+    const avg = lastQuarter.reduce((a, b) => a + b, 0) / lastQuarter.length;
+    expect(avg).toBeGreaterThan(longRunIV * 0.5);
+    expect(avg).toBeLessThan(longRunIV * 1.5);
+  });
+
+  it("has positive autocorrelation (persistence)", () => {
+    const rand = splitmix32(7);
+    const path = generateIVPath(365, 0.80, ivParams, rand);
+    const mean = path.reduce((a, b) => a + b, 0) / path.length;
+    let sumProduct = 0;
+    let sumSq = 0;
+    for (let i = 1; i < path.length; i++) {
+      sumProduct += (path[i] - mean) * (path[i - 1] - mean);
+      sumSq += (path[i - 1] - mean) ** 2;
+    }
+    const autocorr = sumProduct / (sumSq || 1);
+    expect(autocorr).toBeGreaterThan(0.5);
+  });
+});
+
+describe("GBM with ivParams", () => {
+  const ivParams: IVParams = {meanReversion: 5.0, volOfVol: 0.5, vrpOffset: 0.02};
+  const configWithIV: PriceGenConfig = {
+    ...baseConfig,
+    ivParams,
+  };
+
+  it("returns ivPath when ivParams is set", () => {
+    const result = generatePrices(configWithIV);
+    expect(result.ivPath).toBeDefined();
+    expect(result.ivPath!.length).toBe(100);
+  });
+
+  it("ivPath values are positive and finite", () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const result = generatePrices({...configWithIV, seed});
+      for (const iv of result.ivPath!) {
+        expect(iv).toBeGreaterThan(0);
+        expect(isFinite(iv)).toBe(true);
+      }
+    }
+  });
+
+  it("prices remain unaffected (ivParams doesn't change price generation)", () => {
+    const withIV = generatePrices(configWithIV);
+    const withoutIV = generatePrices(baseConfig);
+    expect(withIV.prices).toEqual(withoutIV.prices);
+  });
+});
+
+describe("Jump with ivParams", () => {
+  const ivParams: IVParams = {meanReversion: 5.0, volOfVol: 0.5, vrpOffset: 0.02};
+  const jumpConfig: PriceGenConfig = {
+    ...baseConfig,
+    model: "jump",
+    jump: {lambda: 10, muJ: 0, sigmaJ: 0.05},
+    ivParams,
+  };
+
+  it("returns ivPath when ivParams is set", () => {
+    const result = generatePrices(jumpConfig);
+    expect(result.ivPath).toBeDefined();
+    expect(result.ivPath!.length).toBe(100);
+  });
+
+  it("no ivPath without ivParams", () => {
+    const noIVConfig: PriceGenConfig = {
+      ...baseConfig,
+      model: "jump",
+      jump: {lambda: 10, muJ: 0, sigmaJ: 0.05},
+    };
+    const result = generatePrices(noIVConfig);
+    expect(result.ivPath).toBeUndefined();
   });
 });
