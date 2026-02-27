@@ -68,7 +68,7 @@ We employ three main strategies to find the best presets:
 
 ### Recommended Next Experiments
 
-- **Experiment 2: Defined-Risk Spreads** — Same grid but with vertical spreads (5-wide, 10-wide) to cap max loss per cycle and improve Sharpe by truncating drawdown tails.
-- **Experiment 3: Normal-Vol Regime** — Run identical sweep on 20–30% annual vol (typical equity market) to find where the wheel actually generates alpha.
-- **Experiment 4: Regime Filter** — Only sell premium when realized vol > implied vol (positive variance risk premium). Cash otherwise.
-- **Experiment 5: Kelly Sizing** — Replace fixed 1-contract sizing with fractional Kelly to see if bankroll management rescues the aggressive parameterizations.
+- **Experiment 2: Normal-Vol Regime** — Run identical sweep on 20–30% annual vol (typical equity market) to find where the wheel actually generates alpha. The highest-priority follow-up: if the wheel fails at 150% vol, we need to identify the vol regime where it works.
+- **Experiment 3: Regime Filter** — Only sell premium when realized vol > implied vol (positive variance risk premium). Cash otherwise. Directly motivated by Experiment 1's conclusion: a filter that keeps the wheel out of hostile regimes is the right structural fix.
+- **Experiment 4: Defined-Risk Spreads** — Same grid but with vertical spreads (5-wide, 10-wide) to cap max loss per cycle and improve Sharpe by truncating the gamma-driven drawdown tails that destroyed naked puts.
+- **Experiment 5: Kelly Sizing** — Replace fixed 1-contract sizing with fractional Kelly to see if bankroll management rescues the aggressive parameterizations. Lowest priority: no sizing method creates an edge where none exists, but may help in marginal regimes.
