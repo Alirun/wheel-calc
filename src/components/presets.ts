@@ -291,10 +291,42 @@ export const STRATEGY_BUILT_INS: Preset<StrategyPresetValues>[] = [
     name: "Conservative",
     values: {
       ...defaultStrategyValues(),
-      targetDelta: 0.15,
-      stopLoss: true,
-      stopLossDrawdown: 20,
-      adaptiveCalls: true
+      targetDelta: 0.10,
+      cycleLengthDays: 30,
+      adaptiveCalls: true,
+      minCallDelta: 0.10,
+      maxCallDelta: 0.50,
+      skipThresholdPct: 0,
+      minStrikeAtCost: true,
+      ivRvSpread: true,
+      ivRvSkipBelow: 1.0,
+      ivRvSkipSide: "put",
+      rollPut: true,
+      rollPutInitialDTE: 30,
+      rollPutWhenBelow: 14,
+      rollPutRequireCredit: true,
+      stopLoss: false,
+      rollCall: false
+    },
+    builtIn: true,
+    createdAt: "2024-01-01T00:00:00.000Z"
+  },
+  {
+    name: "Moderate",
+    values: {
+      ...defaultStrategyValues(),
+      targetDelta: 0.20,
+      cycleLengthDays: 14,
+      adaptiveCalls: false,
+      ivRvSpread: true,
+      ivRvSkipBelow: 1.2,
+      ivRvSkipSide: "put",
+      rollPut: true,
+      rollPutInitialDTE: 14,
+      rollPutWhenBelow: 7,
+      rollPutRequireCredit: true,
+      stopLoss: false,
+      rollCall: false
     },
     builtIn: true,
     createdAt: "2024-01-01T00:00:00.000Z"
@@ -303,12 +335,15 @@ export const STRATEGY_BUILT_INS: Preset<StrategyPresetValues>[] = [
     name: "Aggressive",
     values: {
       ...defaultStrategyValues(),
-      targetDelta: 0.40,
-      rollCall: true,
-      rollPut: true,
-      adaptiveCalls: true,
-      minCallDelta: 0.05,
-      maxCallDelta: 0.65
+      targetDelta: 0.20,
+      cycleLengthDays: 3,
+      adaptiveCalls: false,
+      ivRvSpread: true,
+      ivRvSkipBelow: 1.2,
+      ivRvSkipSide: "put",
+      rollPut: false,
+      rollCall: false,
+      stopLoss: false
     },
     builtIn: true,
     createdAt: "2024-01-01T00:00:00.000Z"

@@ -461,16 +461,39 @@ describe("no-storage fallback (getStorage)", () => {
 describe("strategy built-in presets", () => {
   it("Conservative preset has expected values", () => {
     const cons = STRATEGY_BUILT_INS.find(p => p.name === "Conservative")!;
-    expect(cons.values.targetDelta).toBe(0.15);
-    expect(cons.values.stopLoss).toBe(true);
+    expect(cons.values.targetDelta).toBe(0.10);
+    expect(cons.values.cycleLengthDays).toBe(30);
+    expect(cons.values.stopLoss).toBe(false);
     expect(cons.values.adaptiveCalls).toBe(true);
+    expect(cons.values.ivRvSpread).toBe(true);
+    expect(cons.values.ivRvSkipBelow).toBe(1.0);
+    expect(cons.values.ivRvSkipSide).toBe("put");
+    expect(cons.values.rollPut).toBe(true);
+    expect(cons.values.rollCall).toBe(false);
+  });
+
+  it("Moderate preset has expected values", () => {
+    const mod = STRATEGY_BUILT_INS.find(p => p.name === "Moderate")!;
+    expect(mod.values.targetDelta).toBe(0.20);
+    expect(mod.values.cycleLengthDays).toBe(14);
+    expect(mod.values.adaptiveCalls).toBe(false);
+    expect(mod.values.ivRvSkipBelow).toBe(1.2);
+    expect(mod.values.ivRvSkipSide).toBe("put");
+    expect(mod.values.rollPut).toBe(true);
+    expect(mod.values.rollCall).toBe(false);
+    expect(mod.values.stopLoss).toBe(false);
   });
 
   it("Aggressive preset has expected values", () => {
     const agg = STRATEGY_BUILT_INS.find(p => p.name === "Aggressive")!;
-    expect(agg.values.targetDelta).toBe(0.40);
-    expect(agg.values.rollCall).toBe(true);
-    expect(agg.values.rollPut).toBe(true);
+    expect(agg.values.targetDelta).toBe(0.20);
+    expect(agg.values.cycleLengthDays).toBe(3);
+    expect(agg.values.ivRvSkipBelow).toBe(1.2);
+    expect(agg.values.ivRvSkipSide).toBe("put");
+    expect(agg.values.adaptiveCalls).toBe(false);
+    expect(agg.values.rollPut).toBe(false);
+    expect(agg.values.rollCall).toBe(false);
+    expect(agg.values.stopLoss).toBe(false);
   });
 });
 
