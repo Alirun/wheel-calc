@@ -123,7 +123,20 @@ We employ three main strategies to find the best presets:
 <!-- NOTE: Keep this section at the end of the file. New experiments append above this section; new follow-up ideas append to the list below. -->
 ## Recommended Next Experiments
 
-- **Experiment 5: Defined-Risk Spreads** — Same grid but with vertical spreads (5-wide, 10-wide) to cap max loss per cycle and improve Sharpe by truncating the gamma-driven drawdown tails that destroyed naked puts at high vol.
-- **Experiment 6: Multi-Year Simulation** — Run the same grid over 2–5 year horizons to test if the edge compounds or mean-reverts over longer timeframes.
-- **Experiment 7: Kelly Sizing** — Replace fixed 1-contract sizing with fractional Kelly to see if bankroll management rescues the aggressive parameterizations. Lowest priority: no sizing method creates an edge where none exists, but may help in marginal regimes.
-- **Experiment 8: Drift Sensitivity** — Repeat Experiment 3 with 0% drift and 10% drift to determine how the vol boundaries shift with the underlying trend. The conservative strategy's resilience may depend on the 5% drift assumption.
+### High Priority
+
+- **Experiment 5: Put-Only Regime Filter** — Sweep4 applies `skipBelowRatio` to both puts and calls. Skipping calls leaves naked ETH exposure with zero premium income. Test putting the skip on `BasePutRule` only (always sell calls when holding ETH) vs. both rules, to determine if call-side filtering helps or hurts. Cheap experiment — code flag + rerun sweep4 grid.
+- **Experiment 6: Combined Feature Interaction** — Experiments 2–4 tested features in isolation (delta/cycle, stop-loss/rolling, regime filter). Test the *combination* of best settings from each. Do stop-loss + rolling + regime filter stack additively, or interfere? Does regime filtering reduce stop-loss frequency enough to make it redundant? This is the natural culmination — find the best *complete* strategy.
+- **Experiment 7: Drift Sensitivity** — Repeat Experiment 3 with 0% drift and 10% drift to determine how vol boundaries shift with the underlying trend. The conservative strategy's "no ceiling" result may depend on the 5% drift assumption. Critical for real-world deployment — crypto drift varies widely.
+
+### Medium Priority
+
+- **Experiment 8: VRP Sensitivity** — All experiments assume VRP=15%. The regime filter explicitly exploits VRP. Test at VRP=5% (thin edge), 0% (no edge), and 25% (fat edge). If the strategy only works at 15%+, real-world applicability depends on whether crypto VRP is actually that high.
+- **Experiment 9: Heston/Jump Model Robustness** — All experiments used GBM. Run the best parameters from Experiments 3–4 across all 4 price models (GBM, Heston, Jump, Heston-Jump) at the sweet-spot vol (60%) to validate findings aren't model-dependent. Stochastic vol clustering and jump dynamics may invalidate GBM-optimal parameters.
+- **Experiment 10: Multi-Year Simulation** — Run the best strategies over 2–5 year horizons to test if the edge compounds or mean-reverts. Short simulations (365d) may overstate consistency.
+
+### Low Priority
+
+- **Experiment 11: IV/RV Lookback Window** — Fixed at 20 days across all experiments. Test 5–60 day lookback and how it interacts with cycle length — a 3-day cycle with 20-day lookback may use stale regime signals.
+- **Experiment 12: Defined-Risk Spreads** — Vertical spreads (5-wide, 10-wide) to cap max loss per cycle and truncate gamma-driven drawdown tails. Requires engine changes (spread payoff logic).
+- **Experiment 13: Kelly Sizing** — Fractional Kelly to see if bankroll management rescues aggressive parameterizations. No sizing method creates an edge where none exists, but may help in marginal regimes.
