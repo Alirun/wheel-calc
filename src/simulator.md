@@ -223,6 +223,7 @@ const ivRvParams = view(Inputs.form({
   ivRvMinMult: Inputs.range([0.5, 1.0], {value: sd.ivRvMinMult, step: 0.05, label: "Min delta multiplier"}),
   ivRvMaxMult: Inputs.range([1.0, 2.0], {value: sd.ivRvMaxMult, step: 0.05, label: "Max delta multiplier"}),
   ivRvSkipBelow: Inputs.range([0, 2.0], {value: sd.ivRvSkipBelow, step: 0.05, label: "Skip when IV/RV below (0=off)"}),
+  ivRvSkipSide: Inputs.select(["both", "put"], {value: sd.ivRvSkipSide, label: "Skip side"}),
 }));
 ```
 
@@ -330,6 +331,7 @@ const strategyConfig = {
       minMultiplier: strategyParams.ivRvMinMult,
       maxMultiplier: strategyParams.ivRvMaxMult,
       ...(strategyParams.ivRvSkipBelow > 0 ? {skipBelowRatio: strategyParams.ivRvSkipBelow} : {}),
+      ...(strategyParams.ivRvSkipSide !== "both" ? {skipSide: strategyParams.ivRvSkipSide} : {}),
     }
   } : {}),
   ...(strategyParams.rollCall ? {

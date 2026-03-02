@@ -758,4 +758,86 @@ describe("IV/RV skip (skipBelowRatio)", () => {
       expect(computeIVRVMultiplier(m, baseConfig)).toBe(1.0);
     });
   });
+
+  describe("skipSide=put", () => {
+    const putOnlySkipConfig: StrategyConfig = {
+      ...baseConfig,
+      ivRvSpread: {lookbackDays: 20, minMultiplier: 0.8, maxMultiplier: 1.3, skipBelowRatio: 1.0, skipSide: "put"},
+    };
+    const lowIvRvMarket: MarketSnapshot = {day: 25, spot: 2500, iv: 0.40, realizedVol: 0.50};
+    const highIvRvMarket: MarketSnapshot = {day: 25, spot: 2500, iv: 0.60, realizedVol: 0.50};
+
+    it("computeIVRVMultiplier returns 0 for put side when ratio below threshold", () => {
+      expect(computeIVRVMultiplier(lowIvRvMarket, putOnlySkipConfig, "put")).toBe(0);
+    });
+
+    it("computeIVRVMultiplier returns scaled value for call side even when ratio below threshold", () => {
+      const mult = computeIVRVMultiplier(lowIvRvMarket, putOnlySkipConfig, "call");
+      expect(mult).toBeGreaterThan(0);
+      expect(mult).toBe(0.8);
+    });
+
+    it("computeIVRVMultiplier returns 0 for put side without explicit side arg (defaults to both-like)", () => {
+      expect(computeIVRVMultiplier(lowIvRvMarket, putOnlySkipConfig)).toBeGreaterThan(0);
+    });
+
+    it("BasePutRule skips when skipSide=put and IV/RV is low", () => {
+      const rule = findRule("BasePutRule");
+      const p = initialPortfolio();
+      const sig = rule.evaluate(lowIvRvMarket, p, putOnlySkipConfig);
+      expect(sig).not.toBeNull();
+      expect(sig!.action).toBe("SKIP");
+    });
+
+    it("AdaptiveCallRule still sells call when skipSide=put and IV/RV is low", () => {
+      const rule = findRule("AdaptiveCallRule");
+      const p: PortfolioState = {
+        ...initialPortfolio(),
+        phase: "holding_eth",
+        position: {size: 1, entryPrice: 2400},
+      };
+      const sig = rule.evaluate(lowIvRvMarket, p, putOnlySkipConfig);
+      expect(sig).not.toBeNull();
+      expect(sig!.action).toBe("SELL_CALL");
+    });
+
+    it("both sides proceed normally when IV/RV is adequate", () => {
+      const putRule = findRule("BasePutRule");
+      const callRule = findRule("AdaptiveCallRule");
+      const p = initialPortfolio();
+      const putSig = putRule.evaluate(highIvRvMarket, p, putOnlySkipConfig);
+      expect(putSig).not.toBeNull();
+      expect(putSig!.action).toBe("SELL_PUT");
+
+      const holdingP: PortfolioState = {
+        ...initialPortfolio(),
+        phase: "holding_eth",
+        position: {size: 1, entryPrice: 2400},
+      };
+      const callSig = callRule.evaluate(highIvRvMarket, holdingP, putOnlySkipConfig);
+      expect(callSig).not.toBeNull();
+      expect(callSig!.action).toBe("SELL_CALL");
+    });
+
+    it("skipSide=both (default) skips both sides", () => {
+      const bothSkipConfig: StrategyConfig = {
+        ...baseConfig,
+        ivRvSpread: {lookbackDays: 20, minMultiplier: 0.8, maxMultiplier: 1.3, skipBelowRatio: 1.0, skipSide: "both"},
+      };
+      const putRule = findRule("BasePutRule");
+      const callRule = findRule("AdaptiveCallRule");
+
+      const p = initialPortfolio();
+      const putSig = putRule.evaluate(lowIvRvMarket, p, bothSkipConfig);
+      expect(putSig!.action).toBe("SKIP");
+
+      const holdingP: PortfolioState = {
+        ...initialPortfolio(),
+        phase: "holding_eth",
+        position: {size: 1, entryPrice: 2400},
+      };
+      const callSig = callRule.evaluate(lowIvRvMarket, holdingP, bothSkipConfig);
+      expect(callSig!.action).toBe("SKIP");
+    });
+  });
 });

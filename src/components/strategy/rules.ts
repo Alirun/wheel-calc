@@ -19,12 +19,15 @@ export interface Rule {
   ): Signal | null;
 }
 
-export function computeIVRVMultiplier(market: MarketSnapshot, config: StrategyConfig): number {
+export function computeIVRVMultiplier(market: MarketSnapshot, config: StrategyConfig, side?: "put" | "call"): number {
   if (!config.ivRvSpread) return 1.0;
   if (market.realizedVol === undefined || market.realizedVol <= 0) return 1.0;
   const iv = market.iv ?? config.impliedVol;
   const ratio = iv / market.realizedVol;
-  if (config.ivRvSpread.skipBelowRatio && ratio < config.ivRvSpread.skipBelowRatio) return 0;
+  if (config.ivRvSpread.skipBelowRatio && ratio < config.ivRvSpread.skipBelowRatio) {
+    const skipSide = config.ivRvSpread.skipSide ?? "both";
+    if (skipSide === "both" || side === "put") return 0;
+  }
   const {minMultiplier, maxMultiplier} = config.ivRvSpread;
   return Math.max(minMultiplier, Math.min(maxMultiplier, ratio));
 }
@@ -37,7 +40,7 @@ const basePutRule: Rule = {
   evaluate(market, portfolio, config) {
     if (portfolio.phase !== "idle_cash") return null;
 
-    const ivRvMult = computeIVRVMultiplier(market, config);
+    const ivRvMult = computeIVRVMultiplier(market, config, "put");
     if (ivRvMult === 0) {
       const iv = market.iv ?? config.impliedVol;
       const ratio = iv / market.realizedVol!;
@@ -80,7 +83,7 @@ function computeCallDelta(market: MarketSnapshot, portfolio: PortfolioState, con
   } else {
     baseDelta = config.targetDelta;
   }
-  const ivRvMult = computeIVRVMultiplier(market, config);
+  const ivRvMult = computeIVRVMultiplier(market, config, "call");
   return Math.min(baseDelta * ivRvMult, 0.50);
 }
 
@@ -92,7 +95,7 @@ const adaptiveCallRule: Rule = {
   evaluate(market, portfolio, config) {
     if (portfolio.phase !== "holding_eth") return null;
 
-    const ivRvMult = computeIVRVMultiplier(market, config);
+    const ivRvMult = computeIVRVMultiplier(market, config, "call");
     if (ivRvMult === 0) {
       const iv = market.iv ?? config.impliedVol;
       const ratio = iv / market.realizedVol!;
@@ -279,7 +282,7 @@ const rollPutRule: Rule = {
       bsPutPrice(market.spot, opt.strike, remainingT, config.riskFreeRate, vol) *
       (1 + config.bidAskSpreadPct);
 
-    const ivRvMult = computeIVRVMultiplier(market, config);
+    const ivRvMult = computeIVRVMultiplier(market, config, "put");
     const effectiveDelta = Math.min(config.targetDelta * ivRvMult, 0.50);
     const newStrike = findStrikeForDelta(
       effectiveDelta, market.spot, newT, config.riskFreeRate, vol, "put",

@@ -85,6 +85,7 @@ export interface IVRVSpreadConfig {
   minMultiplier: number;
   maxMultiplier: number;
   skipBelowRatio?: number;
+  skipSide?: "both" | "put";
 }
 
 export interface RollCallConfig {

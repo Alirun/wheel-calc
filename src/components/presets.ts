@@ -36,6 +36,7 @@ export interface StrategyPresetValues {
   ivRvMinMult: number;
   ivRvMaxMult: number;
   ivRvSkipBelow: number;
+  ivRvSkipSide: "both" | "put";
   rollCall: boolean;
   rollITMThreshold: number;
   rollRequireCredit: boolean;
@@ -135,6 +136,7 @@ export function defaultStrategyValues(): StrategyPresetValues {
     ivRvMinMult: 0.8,
     ivRvMaxMult: 1.3,
     ivRvSkipBelow: 0,
+    ivRvSkipSide: "put",
     rollCall: false,
     rollITMThreshold: 5,
     rollRequireCredit: true,
@@ -191,6 +193,7 @@ export function validateStrategyValues(raw: unknown): StrategyPresetValues {
     ivRvMinMult: num(r.ivRvMinMult, d.ivRvMinMult, 0.5, 1.0),
     ivRvMaxMult: num(r.ivRvMaxMult, d.ivRvMaxMult, 1.0, 2.0),
     ivRvSkipBelow: num(r.ivRvSkipBelow, d.ivRvSkipBelow, 0, 2.0),
+    ivRvSkipSide: oneOf(r.ivRvSkipSide, d.ivRvSkipSide, ["both", "put"]),
     rollCall: bool(r.rollCall, d.rollCall),
     rollITMThreshold: num(r.rollITMThreshold, d.rollITMThreshold, 1, 20),
     rollRequireCredit: bool(r.rollRequireCredit, d.rollRequireCredit),

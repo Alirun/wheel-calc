@@ -144,6 +144,7 @@ Priority ordering: risk rules (1–2) preempt skip rules (50) which preempt sele
 | `minMultiplier` | number | 0.8 | Floor for delta multiplier (prevents over-conservative deltas) |
 | `maxMultiplier` | number | 1.3 | Cap for delta multiplier (prevents over-aggressive deltas) |
 | `skipBelowRatio` | number? | 1.0 | When set and IV/RV < this value, `BasePutRule` and `AdaptiveCallRule` return `SKIP` instead of selling. `0` or absent = disabled. |
+| `skipSide` | "both"\|"put"? | "both" | Which side(s) to skip when IV/RV < `skipBelowRatio`. `"both"` = skip puts and calls. `"put"` = skip puts only, always sell calls when holding ETH. |
 
 ### RollCallConfig
 
@@ -192,13 +193,15 @@ iv = market.iv ?? config.impliedVol
 ratio = iv / realizedVol
 
 if skipBelowRatio is set and ratio < skipBelowRatio → SKIP (no VRP, stay in cash/hold ETH)
+  — when skipSide = "put": only put-side returns SKIP; call-side still uses the scaled multiplier
+  — when skipSide = "both" (default): both sides return SKIP
 
 multiplier = clamp(ratio, minMultiplier, maxMultiplier)
 effectiveDelta = targetDelta * multiplier  (capped at 0.50)
 ```
 
 Effect:
-- IV/RV < skipBelowRatio → `SKIP` signal, no option sold (regime filter)
+- IV/RV < skipBelowRatio → `SKIP` signal, no option sold (regime filter). With `skipSide="put"`, only puts are skipped; calls continue selling to collect premium while holding ETH.
 - IV/RV = 1.0 → multiplier = 1.0, no change
 - IV/RV = 1.3 → multiplier = 1.3, delta increases 30% (more aggressive, premiums are rich)
 - IV/RV = 0.7 → multiplier = minMultiplier (more conservative, premiums are fair/cheap)

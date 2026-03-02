@@ -118,25 +118,46 @@ We employ three main strategies to find the best presets:
 - **Conclusion:** **The regime filter is the most universally effective parameter discovered.** Recommended: `skipBelowRatio=1.0` for conservative, `1.10–1.20` for moderate/active.
 - **Action Taken:** Full analysis in `research/sweep4/SWEEP4_ANALYSIS.md`. Engine: `skipBelowRatio` on `IVRVSpreadConfig`, integrated into `computeIVRVMultiplier`.
 
+### Experiment 5: Put-Only Regime Filter
+- **Goal:** Determine whether applying `skipBelowRatio` to puts only (always sell calls when holding ETH) improves risk-adjusted returns vs. the current "skip both" behavior from Experiment 4.
+- **Market Baseline:** GBM with stochastic IV (OU process, κ=5.0, ξ=0.5, VRP=15%), 5% annual drift, tested at 8 vol levels (40%–150%).
+- **Approach:** Sweep `skipSide` ("both", "put") × `skipBelowRatio` (0, 0.9, 1.0, 1.1, 1.2) × 3 strategies × 8 vol levels × 1,000 paths. 216 unique combinations.
+- **Results:**
+  - **Conservative (δ0.10/30d):** put-only wins 22/32 combos, mean ΔSharpe +0.008. Best: vol=60%, skip=1.1, side=put → Sharpe **0.503**, APR 10.92%.
+  - **Moderate (δ0.20/14d):** put-only wins 28/32 combos, mean ΔSharpe +0.024. Best: vol=40%, skip=1.2, side=put → Sharpe **0.372**, APR 16.44%.
+  - **Active (δ0.20/3d):** put-only wins **30/32** combos, mean ΔSharpe **+0.065**. Best: vol=40%, skip=1.2, side=put → Sharpe **0.473**, APR 21.31%. Largest single Sharpe improvement in the research program.
+- **Key Findings:**
+  1. **Put-only filtering is strictly superior for moderate/active strategies.** Skipping calls leaves naked ETH exposure with zero premium income — call premium cushions drawdowns during low-VRP periods.
+  2. **Effect scales with gamma exposure.** Conservative: +0.008 mean ΔSharpe. Moderate: +0.024. Active: +0.065. Higher delta + shorter cycles = more value from keeping calls enabled.
+  3. **Vol ceilings extend dramatically.** Active: 76%→92% (+16pp). Moderate: 84%→93% (+9pp). Put-only filtering makes moderate/active strategies viable in significantly more volatile markets.
+  4. **APR slightly lower, Sharpe much higher.** Put-only sacrifices 0.3–1.0% APR for 2–5pp lower MaxDD and 2–6pp higher win rates — classic risk-adjustment win.
+  5. **Active strategy rehabilitated.** At skip=1.2/put-only/40% vol, Active achieves 0.473 Sharpe — higher than Conservative's baseline 0.41. Previously uncompetitive on risk-adjusted basis.
+  6. **Always sell calls when holding ETH.** The VRP regime signal is irrelevant for covered calls — you already own the ETH, so selling calls always reduces risk regardless of IV/RV ratio.
+- **Conclusion:** **`skipSide: "put"` should be the default for moderate and active strategies.** There is no scenario where "both" is clearly better for these profiles. For conservative, the effect is small but still net positive. Recommended: `skipBelowRatio=1.2, skipSide="put"` for moderate/active; `skipBelowRatio=1.0–1.2, skipSide="put"` for conservative.
+- **Action Taken:** Full analysis in `research/sweep5/SWEEP5_ANALYSIS.md`. Engine: `skipSide` on `IVRVSpreadConfig`, `side` parameter on `computeIVRVMultiplier`.
+
 ---
 
 <!-- NOTE: Keep this section at the end of the file. New experiments append above this section; new follow-up ideas append to the list below. -->
 ## Recommended Next Experiments
 
-### High Priority
+### Critical — Must answer before production deployment
 
-- **Experiment 5: Put-Only Regime Filter** — Sweep4 applies `skipBelowRatio` to both puts and calls. Skipping calls leaves naked ETH exposure with zero premium income. Test putting the skip on `BasePutRule` only (always sell calls when holding ETH) vs. both rules, to determine if call-side filtering helps or hurts. Cheap experiment — code flag + rerun sweep4 grid.
-- **Experiment 6: Combined Feature Interaction** — Experiments 2–4 tested features in isolation (delta/cycle, stop-loss/rolling, regime filter). Test the *combination* of best settings from each. Do stop-loss + rolling + regime filter stack additively, or interfere? Does regime filtering reduce stop-loss frequency enough to make it redundant? This is the natural culmination — find the best *complete* strategy.
-- **Experiment 7: Drift Sensitivity** — Repeat Experiment 3 with 0% drift and 10% drift to determine how vol boundaries shift with the underlying trend. The conservative strategy's "no ceiling" result may depend on the 5% drift assumption. Critical for real-world deployment — crypto drift varies widely.
+- **Experiment 6: Combined Feature Stack** — Experiments 2–5 tested features in isolation: delta/cycle, regime filter, put-only filtering. Test the *full combination* of best settings: `skipBelowRatio=1.0–1.2`, `skipSide="put"`, adaptive calls, rolling, and stop-loss — all enabled simultaneously. Key questions: Do features stack additively or interfere? Does regime filtering reduce stop-loss triggers enough to make stop-loss redundant? Does rolling + regime filtering create conflicting signals? This is the capstone experiment — find the best *complete* strategy configuration and bake it into presets.
+- **Experiment 7: Drift Sensitivity** — All 5 experiments assume 5% annual drift. Crypto drift ranges from -80% (bear) to +200% (bull). Repeat Experiment 3's vol boundary search at 0% drift (sideways), -30% drift (bear), and +50% drift (strong bull). If the conservative strategy's "no vol ceiling" result depends on positive drift, deployment rules need a drift guard. If put-only filtering (Exp 5) only helps in positive-drift regimes, the recommendation changes.
 
-### Medium Priority
+### High — Robustness validation; affects deployment confidence
 
-- **Experiment 8: VRP Sensitivity** — All experiments assume VRP=15%. The regime filter explicitly exploits VRP. Test at VRP=5% (thin edge), 0% (no edge), and 25% (fat edge). If the strategy only works at 15%+, real-world applicability depends on whether crypto VRP is actually that high.
-- **Experiment 9: Heston/Jump Model Robustness** — All experiments used GBM. Run the best parameters from Experiments 3–4 across all 4 price models (GBM, Heston, Jump, Heston-Jump) at the sweet-spot vol (60%) to validate findings aren't model-dependent. Stochastic vol clustering and jump dynamics may invalidate GBM-optimal parameters.
-- **Experiment 10: Multi-Year Simulation** — Run the best strategies over 2–5 year horizons to test if the edge compounds or mean-reverts. Short simulations (365d) may overstate consistency.
+- **Experiment 8: Model Robustness** — All experiments used GBM with stochastic IV. Run the best configs from Experiments 4–5 across all 4 price models (GBM, Heston, Jump, Heston-Jump) at vol levels 40–80%. Heston's vol clustering may cause regime filter to trigger in bursts rather than smoothly. Jump dynamics may invalidate delta-based assignment probability assumptions. If optimal parameters differ significantly by model, the strategy needs model-aware configuration.
+- **Experiment 9: VRP Sensitivity** — All experiments assume VRP=15%. The regime filter explicitly exploits VRP — if real VRP is lower, the entire filtering framework may be overfitted. Test at VRP=0% (no edge), 5% (thin edge), 10%, 15% (current), and 25% (fat edge). Key question: at what VRP level does the regime filter (Exp 4) stop helping, and does put-only filtering (Exp 5) survive low-VRP environments?
+- **Experiment 10: Multi-Year Horizon** — All experiments use 365-day simulations. Run the best strategies over 2-year and 5-year horizons. Does the edge compound, mean-revert, or degrade as the strategy's own trades affect the path? Longer horizons also test whether regime filter thresholds remain stable or need recalibration as vol regimes shift.
 
-### Low Priority
+### Medium — Parameter refinement within proven framework
 
-- **Experiment 11: IV/RV Lookback Window** — Fixed at 20 days across all experiments. Test 5–60 day lookback and how it interacts with cycle length — a 3-day cycle with 20-day lookback may use stale regime signals.
-- **Experiment 12: Defined-Risk Spreads** — Vertical spreads (5-wide, 10-wide) to cap max loss per cycle and truncate gamma-driven drawdown tails. Requires engine changes (spread payoff logic).
-- **Experiment 13: Kelly Sizing** — Fractional Kelly to see if bankroll management rescues aggressive parameterizations. No sizing method creates an edge where none exists, but may help in marginal regimes.
+- **Experiment 11: Vol-Adaptive Skip Threshold** — Experiments 4–5 found that optimal `skipBelowRatio` varies by vol level (conservative: 0.90–1.00, moderate/active: 1.10–1.20) and that higher vol needs higher thresholds. Test a dynamic threshold formula: `skipBelowRatio = base + k × annualizedVol` to see if a single adaptive rule replaces per-strategy tuning. Would simplify configuration and make the strategy self-adjusting across vol regimes.
+- **Experiment 12: Lookback × Cycle Interaction** — IV/RV lookback is fixed at 20 days across all experiments. A 3-day cycle with 20-day lookback may act on stale regime signals; a 30-day cycle might benefit from longer lookback. Test lookback values 5–60 days crossed with all three cycle lengths. Also test whether the put-only filter (Exp 5) is more or less sensitive to lookback than the both-side filter.
+
+### Low — Speculative or requires engine changes
+
+- **Experiment 13: Defined-Risk Spreads** — Vertical spreads (5-wide, 10-wide put spreads) to cap max loss per cycle. Would truncate the gamma-driven drawdown tails that limit deployment above 80% vol. Requires engine changes: spread payoff logic, margin treatment, and dual-leg rolling. High implementation cost but could fundamentally reshape the vol ceiling.
+- **Experiment 14: Kelly Sizing** — Fractional Kelly criterion for position sizing. No sizing method creates an edge where none exists, but Kelly may improve Sharpe in marginal vol regimes (70–90%) by reducing exposure when expected edge is thin. Test ½-Kelly and ¼-Kelly against fixed 1-contract sizing. Requires bankroll tracking in the simulation engine.
