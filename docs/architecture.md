@@ -20,7 +20,7 @@ presets.ts             ← preset CRUD + validation for market/strategy configs;
 deribit.ts             ← Deribit public API fetch wrappers (zero deps)
 strategy/
   types.ts             ← Signal, Event, MarketSnapshot, PortfolioState, Phase, Config
-  rules.ts             ← Rule interface + BasePutRule, AdaptiveCallRule, LowPremiumSkipRule
+  rules.ts             ← Rule interface + BasePutRule, AdaptiveCallRule, LowPremiumSkipRule, RollCallRule, RollPutRule, StopLossRule, StopLossCooldownRule, computeIVRVMultiplier
   strategy.ts          ← evaluateRules (priority-ordered), isDecisionPoint
   executor.ts          ← Executor interface + SimExecutor (sim-specific pricing/assignment)
   state.ts             ← applyEvents reducer, initialPortfolio, toDailyState

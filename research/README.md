@@ -101,12 +101,28 @@ We employ three main strategies to find the best presets:
 - **Conclusion:** **The vol boundary is strategy-dependent, not universal.** Conservative parameterization (δ0.10/30d) is viable at any vol below ~155%. Moderate/active strategies have firm ceilings at 82%/77% vol respectively. The optimal deployment zone is 55%–65% vol for all strategies. Above 80% vol, only conservative parameterization should be used. For live deployment: monitor 30-day realized vol; exit moderate/active when RV > 75%, exit conservative when RV > 150%.
 - **Action Taken:** Full analysis in `research/sweep3/SWEEP3_ANALYSIS.md`. Deployment zone boundaries established for all three strategy profiles.
 
+### Experiment 4: Regime Filter
+- **Goal:** Test whether skipping premium selling when IV/RV is below a threshold (no positive variance risk premium) improves risk-adjusted returns.
+- **Market Baseline:** GBM with stochastic IV (OU process, κ=5.0, ξ=0.5, VRP=15%), 5% annual drift, tested at 8 vol levels (40%–150%).
+- **Approach:** Sweep `skipBelowRatio` (0, 0.8, 0.9, 1.0, 1.05, 1.1, 1.2, 1.3) × 3 strategies × 8 vol levels × 1,000 paths. 192 total combinations. IV/RV spread scaling enabled (lookback=20, minMult=0.8, maxMult=1.3).
+- **Results:**
+  - **Conservative (δ0.10/30d):** Best Sharpe 0.494 at 50% vol with skip<1.0 (+0.083 vs baseline). Sweet spot 0.90–1.00.
+  - **Moderate (δ0.20/14d):** Best Sharpe 0.341 at 40% vol with skip<1.3 (+0.174). Vol ceiling shifts ~84%→~88%.
+  - **Active (δ0.20/3d):** Best Sharpe 0.346 at 40% vol with skip<1.3 (+0.167). Vol ceiling shifts ~76%→~84%.
+- **Key Findings:**
+  1. **Universally beneficial.** 24/24 strategy-vol combos improved. First parameter with no losers.
+  2. **Optimal threshold is strategy-dependent.** Conservative: skip=0.90–1.00. Moderate/Active: skip=1.10–1.20. Higher gamma → higher threshold.
+  3. **Raises vol ceilings 5–10pp.** Active 76%→84%, Moderate 84%→88%.
+  4. **Aggregate sweet spot: skip=1.10** (+0.056 mean ΔSharpe across all combos).
+  5. **Over-filtering (skip=1.30) degrades at high vol** — skips 40%+ of cycles, APR drops 5–15pp for marginal Sharpe gain.
+- **Conclusion:** **The regime filter is the most universally effective parameter discovered.** Recommended: `skipBelowRatio=1.0` for conservative, `1.10–1.20` for moderate/active.
+- **Action Taken:** Full analysis in `research/sweep4/SWEEP4_ANALYSIS.md`. Engine: `skipBelowRatio` on `IVRVSpreadConfig`, integrated into `computeIVRVMultiplier`.
+
 ---
 
 <!-- NOTE: Keep this section at the end of the file. New experiments append above this section; new follow-up ideas append to the list below. -->
 ## Recommended Next Experiments
 
-- **Experiment 4: Regime Filter** — Only sell premium when IV > RV (positive variance risk premium). Cash otherwise. Now that the simulator has stochastic IV (OU process), this test is meaningful — IV fluctuates independently of RV, creating natural entry/exit signals.
 - **Experiment 5: Defined-Risk Spreads** — Same grid but with vertical spreads (5-wide, 10-wide) to cap max loss per cycle and improve Sharpe by truncating the gamma-driven drawdown tails that destroyed naked puts at high vol.
 - **Experiment 6: Multi-Year Simulation** — Run the same grid over 2–5 year horizons to test if the edge compounds or mean-reverts over longer timeframes.
 - **Experiment 7: Kelly Sizing** — Replace fixed 1-contract sizing with fractional Kelly to see if bankroll management rescues the aggressive parameterizations. Lowest priority: no sizing method creates an edge where none exists, but may help in marginal regimes.

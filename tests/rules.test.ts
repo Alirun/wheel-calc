@@ -614,3 +614,148 @@ describe("IV/RV spread delta scaling", () => {
     }
   });
 });
+
+describe("IV/RV skip (skipBelowRatio)", () => {
+  const skipConfig: StrategyConfig = {
+    ...baseConfig,
+    ivRvSpread: {lookbackDays: 20, minMultiplier: 0.8, maxMultiplier: 1.3, skipBelowRatio: 1.0},
+  };
+
+  describe("BasePutRule", () => {
+    const rule = findRule("BasePutRule");
+
+    it("returns SKIP when IV/RV ratio is below threshold", () => {
+      const p = initialPortfolio();
+      const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.40, realizedVol: 0.50};
+      const sig = rule.evaluate(m, p, skipConfig);
+      expect(sig).not.toBeNull();
+      expect(sig!.action).toBe("SKIP");
+      if (sig!.action === "SKIP") {
+        expect(sig!.rule).toBe("BasePutRule");
+        expect(sig!.reason).toContain("IV/RV");
+      }
+    });
+
+    it("sells put when IV/RV ratio meets threshold", () => {
+      const p = initialPortfolio();
+      const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.60, realizedVol: 0.50};
+      const sig = rule.evaluate(m, p, skipConfig);
+      expect(sig).not.toBeNull();
+      expect(sig!.action).toBe("SELL_PUT");
+    });
+
+    it("sells put when IV/RV ratio exactly equals threshold", () => {
+      const p = initialPortfolio();
+      const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.50, realizedVol: 0.50};
+      const sig = rule.evaluate(m, p, skipConfig);
+      expect(sig).not.toBeNull();
+      expect(sig!.action).toBe("SELL_PUT");
+    });
+
+    it("sells put when realizedVol is undefined (warmup period)", () => {
+      const p = initialPortfolio();
+      const m: MarketSnapshot = {day: 5, spot: 2500, iv: 0.40};
+      const sig = rule.evaluate(m, p, skipConfig);
+      expect(sig).not.toBeNull();
+      expect(sig!.action).toBe("SELL_PUT");
+    });
+
+    it("sells put when realizedVol is zero", () => {
+      const p = initialPortfolio();
+      const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.40, realizedVol: 0};
+      const sig = rule.evaluate(m, p, skipConfig);
+      expect(sig).not.toBeNull();
+      expect(sig!.action).toBe("SELL_PUT");
+    });
+
+    it("sells put when skipBelowRatio is not configured", () => {
+      const p = initialPortfolio();
+      const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.40, realizedVol: 0.50};
+      const noSkipConfig: StrategyConfig = {
+        ...baseConfig,
+        ivRvSpread: {lookbackDays: 20, minMultiplier: 0.8, maxMultiplier: 1.3},
+      };
+      const sig = rule.evaluate(m, p, noSkipConfig);
+      expect(sig).not.toBeNull();
+      expect(sig!.action).toBe("SELL_PUT");
+    });
+
+    it("uses impliedVol from config when market IV is undefined", () => {
+      const cfg: StrategyConfig = {
+        ...baseConfig,
+        impliedVol: 0.40,
+        ivRvSpread: {lookbackDays: 20, minMultiplier: 0.8, maxMultiplier: 1.3, skipBelowRatio: 1.0},
+      };
+      const p = initialPortfolio();
+      const m: MarketSnapshot = {day: 25, spot: 2500, realizedVol: 0.50};
+      const sig = rule.evaluate(m, p, cfg);
+      expect(sig).not.toBeNull();
+      expect(sig!.action).toBe("SKIP");
+    });
+
+    it("respects custom skipBelowRatio threshold", () => {
+      const strictConfig: StrategyConfig = {
+        ...baseConfig,
+        ivRvSpread: {lookbackDays: 20, minMultiplier: 0.8, maxMultiplier: 1.3, skipBelowRatio: 1.2},
+      };
+      const p = initialPortfolio();
+      const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.55, realizedVol: 0.50};
+      const sig = rule.evaluate(m, p, strictConfig);
+      expect(sig).not.toBeNull();
+      expect(sig!.action).toBe("SKIP");
+    });
+  });
+
+  describe("AdaptiveCallRule", () => {
+    const rule = findRule("AdaptiveCallRule");
+    const holdingPortfolio: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "holding_eth",
+      position: {size: 1, entryPrice: 2400},
+    };
+
+    it("returns SKIP when IV/RV ratio is below threshold", () => {
+      const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.40, realizedVol: 0.50};
+      const sig = rule.evaluate(m, holdingPortfolio, skipConfig);
+      expect(sig).not.toBeNull();
+      expect(sig!.action).toBe("SKIP");
+      if (sig!.action === "SKIP") {
+        expect(sig!.rule).toBe("AdaptiveCallRule");
+        expect(sig!.reason).toContain("IV/RV");
+      }
+    });
+
+    it("sells call when IV/RV ratio meets threshold", () => {
+      const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.60, realizedVol: 0.50};
+      const sig = rule.evaluate(m, holdingPortfolio, skipConfig);
+      expect(sig).not.toBeNull();
+      expect(sig!.action).toBe("SELL_CALL");
+    });
+
+    it("sells call when realizedVol is undefined (warmup period)", () => {
+      const m: MarketSnapshot = {day: 5, spot: 2500, iv: 0.40};
+      const sig = rule.evaluate(m, holdingPortfolio, skipConfig);
+      expect(sig).not.toBeNull();
+      expect(sig!.action).toBe("SELL_CALL");
+    });
+  });
+
+  describe("computeIVRVMultiplier", () => {
+    it("returns 0 when ratio is below skipBelowRatio", () => {
+      const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.40, realizedVol: 0.50};
+      expect(computeIVRVMultiplier(m, skipConfig)).toBe(0);
+    });
+
+    it("returns clamped multiplier when above skipBelowRatio", () => {
+      const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.60, realizedVol: 0.50};
+      const mult = computeIVRVMultiplier(m, skipConfig);
+      expect(mult).toBeGreaterThan(0);
+      expect(mult).toBeLessThanOrEqual(1.3);
+    });
+
+    it("returns 1.0 when ivRvSpread not configured", () => {
+      const m: MarketSnapshot = {day: 25, spot: 2500, iv: 0.40, realizedVol: 0.50};
+      expect(computeIVRVMultiplier(m, baseConfig)).toBe(1.0);
+    });
+  });
+});

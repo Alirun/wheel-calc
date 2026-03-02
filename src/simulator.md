@@ -222,6 +222,7 @@ const ivRvParams = view(Inputs.form({
   ivRvLookback: Inputs.range([5, 60], {value: sd.ivRvLookback, step: 1, label: "RV lookback (days)"}),
   ivRvMinMult: Inputs.range([0.5, 1.0], {value: sd.ivRvMinMult, step: 0.05, label: "Min delta multiplier"}),
   ivRvMaxMult: Inputs.range([1.0, 2.0], {value: sd.ivRvMaxMult, step: 0.05, label: "Max delta multiplier"}),
+  ivRvSkipBelow: Inputs.range([0, 2.0], {value: sd.ivRvSkipBelow, step: 0.05, label: "Skip when IV/RV below (0=off)"}),
 }));
 ```
 
@@ -328,6 +329,7 @@ const strategyConfig = {
       lookbackDays: strategyParams.ivRvLookback,
       minMultiplier: strategyParams.ivRvMinMult,
       maxMultiplier: strategyParams.ivRvMaxMult,
+      ...(strategyParams.ivRvSkipBelow > 0 ? {skipBelowRatio: strategyParams.ivRvSkipBelow} : {}),
     }
   } : {}),
   ...(strategyParams.rollCall ? {
@@ -657,6 +659,7 @@ const smNodes = [
 
 const smEdges = [
   {from: "idle_cash", to: "short_put", label: "sell put"},
+  {from: "idle_cash", to: "idle_cash", label: "skip"},
   {from: "short_put", to: "idle_cash", label: "expired OTM"},
   {from: "short_put", to: "holding_eth", label: "assigned"},
   {from: "short_put", to: "short_put", label: "roll"},
@@ -745,6 +748,10 @@ const stateMachineSvg = (() => {
     <!-- assigned: short_call → idle_cash (straight vertical, left side) -->
     <line x1="20" y1="140" x2="20" y2="20" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
     <text x="10" y="82" fill="var(--theme-foreground-muted)" font-size="9" text-anchor="end">assigned</text>
+
+    <!-- skip: idle_cash self-loop (left side, no VRP regime filter) -->
+    <path d="M-40,-10 C-70,-20 -70,20 -40,10" fill="none" stroke="var(--theme-foreground-muted)" marker-end="url(#ah)"/>
+    <text x="-78" y="2" fill="var(--theme-foreground-muted)" font-size="9" text-anchor="end">skip</text>
   `;
   const edgeGroup = document.createElementNS(ns, "g");
   edgeGroup.innerHTML = edges;

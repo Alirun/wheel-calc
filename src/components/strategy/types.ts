@@ -84,6 +84,7 @@ export interface IVRVSpreadConfig {
   lookbackDays: number;
   minMultiplier: number;
   maxMultiplier: number;
+  skipBelowRatio?: number;
 }
 
 export interface RollCallConfig {

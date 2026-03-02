@@ -24,6 +24,7 @@ export function computeIVRVMultiplier(market: MarketSnapshot, config: StrategyCo
   if (market.realizedVol === undefined || market.realizedVol <= 0) return 1.0;
   const iv = market.iv ?? config.impliedVol;
   const ratio = iv / market.realizedVol;
+  if (config.ivRvSpread.skipBelowRatio && ratio < config.ivRvSpread.skipBelowRatio) return 0;
   const {minMultiplier, maxMultiplier} = config.ivRvSpread;
   return Math.max(minMultiplier, Math.min(maxMultiplier, ratio));
 }
@@ -36,9 +37,19 @@ const basePutRule: Rule = {
   evaluate(market, portfolio, config) {
     if (portfolio.phase !== "idle_cash") return null;
 
+    const ivRvMult = computeIVRVMultiplier(market, config);
+    if (ivRvMult === 0) {
+      const iv = market.iv ?? config.impliedVol;
+      const ratio = iv / market.realizedVol!;
+      return {
+        action: "SKIP",
+        rule: "BasePutRule",
+        reason: `IV/RV=${ratio.toFixed(2)} < ${config.ivRvSpread!.skipBelowRatio!.toFixed(2)}, no VRP`,
+      };
+    }
+
     const T = (config.rollPut?.initialDTE ?? config.cycleLengthDays) / 365;
     const vol = market.iv ?? config.impliedVol;
-    const ivRvMult = computeIVRVMultiplier(market, config);
     const effectiveDelta = Math.min(config.targetDelta * ivRvMult, 0.50);
     const strike = findStrikeForDelta(
       effectiveDelta, market.spot, T, config.riskFreeRate, vol, "put",
@@ -80,6 +91,17 @@ const adaptiveCallRule: Rule = {
   priority: 100,
   evaluate(market, portfolio, config) {
     if (portfolio.phase !== "holding_eth") return null;
+
+    const ivRvMult = computeIVRVMultiplier(market, config);
+    if (ivRvMult === 0) {
+      const iv = market.iv ?? config.impliedVol;
+      const ratio = iv / market.realizedVol!;
+      return {
+        action: "SKIP",
+        rule: "AdaptiveCallRule",
+        reason: `IV/RV=${ratio.toFixed(2)} < ${config.ivRvSpread!.skipBelowRatio!.toFixed(2)}, no VRP`,
+      };
+    }
 
     const T = config.cycleLengthDays / 365;
     const vol = market.iv ?? config.impliedVol;
