@@ -299,6 +299,7 @@ export const STRATEGY_BUILT_INS: Preset<StrategyPresetValues>[] = [
       skipThresholdPct: 0,
       minStrikeAtCost: true,
       ivRvSpread: true,
+      ivRvLookback: 45,
       ivRvSkipBelow: 1.0,
       ivRvSkipSide: "put",
       rollPut: true,
