@@ -54,6 +54,32 @@ Tests use Vitest (`npx vitest run`). Coverage via `npx vitest run --coverage`. N
 - **Verify utilities exist** before importing. Don't assume helpers exist based on common patterns.
 - **Follow existing patterns.** When in doubt, find a similar existing implementation and match its structure.
 
+## Multi-Threaded Sweep Scripts
+
+Research sweeps should use `worker_threads` to parallelize Monte Carlo runs across CPU cores. **tsx cannot propagate ESM loader hooks to worker threads** (Node.js limitation, tsx#354). The workaround:
+
+1. **Pre-compile the worker with esbuild** at startup. Bundle the `.ts` worker file to a temporary `.compiled.mjs` file:
+   ```ts
+   import { buildSync } from "esbuild";
+   const compiled = buildSync({
+     entryPoints: [WORKER_TS_PATH],
+     bundle: true,
+     platform: "node",
+     format: "esm",
+     target: "node22",
+     outfile: WORKER_JS_PATH,
+   });
+   process.on("exit", () => { try { unlinkSync(WORKER_JS_PATH); } catch {} });
+   ```
+2. **Spawn workers from the compiled JS**, not the `.ts` source:
+   ```ts
+   const w = new Worker(WORKER_JS_PATH);  // NOT the .ts file
+   ```
+3. **Use a WorkerPool class** that manages a fixed pool of workers, dispatches tasks via `postMessage`, and collects results via promises. See `research/sweep14/sweep14_mt.ts` for the reference implementation.
+4. **Run with** `npx tsx research/sweepN/sweepN_mt.ts --threads=8` (default: `os.cpus().length - 1`).
+
+Do NOT attempt: `execArgv: ["--import", "tsx/esm"]`, data URL workers importing `.ts`, or `.mjs` wrapper files calling `register("tsx/esm")` — all fail under tsx.
+
 ## Error Recovery
 
 - If something fails, fix the issue. Don't skip or disable checks.
