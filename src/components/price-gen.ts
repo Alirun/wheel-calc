@@ -22,10 +22,17 @@ export interface PriceGenResult {
   ivPath?: number[];
 }
 
+export interface IVJumpParams {
+  lambda: number;   // expected IV jumps per year (e.g., 20)
+  muJ: number;      // mean of IV jump size in decimal (e.g., 0 for symmetric)
+  sigmaJ: number;   // std dev of IV jump size in decimal (e.g., 0.10)
+}
+
 export interface IVParams {
   meanReversion: number;   // speed of mean-reversion (e.g., 5.0 → half-life ~50 days)
   volOfVol: number;        // annualized vol-of-vol for IV noise (e.g., 0.5)
   vrpOffset: number;       // variance risk premium: IV mean = annualVol + vrpOffset (decimal, e.g., 0.02)
+  ivJumps?: IVJumpParams;  // optional Poisson jump component for fat tails
 }
 
 export interface PriceGenConfig {
@@ -66,7 +73,7 @@ export function generateIVPath(
   ivParams: IVParams,
   rand: () => number,
 ): number[] {
-  const {meanReversion, volOfVol, vrpOffset} = ivParams;
+  const {meanReversion, volOfVol, vrpOffset, ivJumps} = ivParams;
   const longRunIV = annualVol + vrpOffset;
   const dt = 1 / 365;
   const sqrtDt = Math.sqrt(dt);
@@ -77,7 +84,14 @@ export function generateIVPath(
 
   for (let i = 1; i < days; i++) {
     const z = boxMuller(rand);
-    iv += meanReversion * (longRunIV - iv) * dt + volOfVol * sqrtDt * z;
+    let jump = 0;
+    if (ivJumps) {
+      const jumpProb = ivJumps.lambda * dt;
+      if (rand() < jumpProb) {
+        jump = ivJumps.muJ + ivJumps.sigmaJ * boxMuller(rand);
+      }
+    }
+    iv += meanReversion * (longRunIV - iv) * dt + volOfVol * sqrtDt * z + jump;
     iv = Math.max(iv, floor);
     ivPath.push(iv);
   }

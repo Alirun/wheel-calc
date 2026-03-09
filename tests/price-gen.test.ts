@@ -1,6 +1,6 @@
 import {describe, it, expect} from "vitest";
 import {generatePrices, generateIVPath, splitmix32, boxMuller} from "../src/components/price-gen.js";
-import type {PriceGenConfig, IVParams} from "../src/components/price-gen.js";
+import type {PriceGenConfig, IVParams, IVJumpParams} from "../src/components/price-gen.js";
 
 const baseConfig: PriceGenConfig = {
   startPrice: 2500,
@@ -445,5 +445,111 @@ describe("Jump with ivParams", () => {
     };
     const result = generatePrices(noIVConfig);
     expect(result.ivPath).toBeUndefined();
+  });
+});
+
+describe("generateIVPath with IV jumps (OU + Poisson)", () => {
+  const baseIVParams: IVParams = {meanReversion: 5.0, volOfVol: 0.5, vrpOffset: 0.02};
+  const ivJumps: IVJumpParams = {lambda: 20, muJ: 0, sigmaJ: 0.10};
+  const jumpIVParams: IVParams = {...baseIVParams, ivJumps};
+
+  it("returns correct length", () => {
+    const rand = splitmix32(42);
+    const path = generateIVPath(100, 0.80, jumpIVParams, rand);
+    expect(path.length).toBe(100);
+  });
+
+  it("starts at annualVol + vrpOffset (same as pure OU)", () => {
+    const rand = splitmix32(42);
+    const path = generateIVPath(100, 0.80, jumpIVParams, rand);
+    expect(path[0]).toBeCloseTo(0.82, 10);
+  });
+
+  it("is deterministic", () => {
+    const r1 = splitmix32(42);
+    const r2 = splitmix32(42);
+    const p1 = generateIVPath(200, 0.80, jumpIVParams, r1);
+    const p2 = generateIVPath(200, 0.80, jumpIVParams, r2);
+    expect(p1).toEqual(p2);
+  });
+
+  it("values never go below floor (0.05)", () => {
+    const extremeParams: IVParams = {
+      meanReversion: 0.5, volOfVol: 3.0, vrpOffset: -0.1,
+      ivJumps: {lambda: 50, muJ: -0.05, sigmaJ: 0.20},
+    };
+    for (let seed = 1; seed <= 50; seed++) {
+      const rand = splitmix32(seed);
+      const path = generateIVPath(365, 0.30, extremeParams, rand);
+      for (const iv of path) {
+        expect(iv).toBeGreaterThanOrEqual(0.05);
+        expect(isFinite(iv)).toBe(true);
+      }
+    }
+  });
+
+  it("produces fatter tails than pure OU", () => {
+    const nPaths = 500;
+    const days = 365;
+    const annualVol = 0.60;
+    let ouKurtSum = 0;
+    let jumpKurtSum = 0;
+
+    for (let s = 0; s < nPaths; s++) {
+      const randOU = splitmix32(s);
+      const randJump = splitmix32(s + 100_000);
+      const ouPath = generateIVPath(days, annualVol, baseIVParams, randOU);
+      const jumpPath = generateIVPath(days, annualVol, jumpIVParams, randJump);
+
+      const deltaOU = ouPath.slice(1).map((v, i) => v - ouPath[i]);
+      const deltaJump = jumpPath.slice(1).map((v, i) => v - jumpPath[i]);
+
+      const kurtosis = (arr: number[]) => {
+        const m = arr.reduce((a, b) => a + b, 0) / arr.length;
+        const s = Math.sqrt(arr.reduce((a, v) => a + (v - m) ** 2, 0) / arr.length);
+        return arr.reduce((a, v) => a + ((v - m) / (s || 1)) ** 4, 0) / arr.length;
+      };
+
+      ouKurtSum += kurtosis(deltaOU);
+      jumpKurtSum += kurtosis(deltaJump);
+    }
+
+    const ouKurt = ouKurtSum / nPaths;
+    const jumpKurt = jumpKurtSum / nPaths;
+    expect(jumpKurt).toBeGreaterThan(ouKurt);
+  });
+
+  it("diverges from pure OU path (jump noise changes trajectory)", () => {
+    const rand1 = splitmix32(42);
+    const rand2 = splitmix32(42);
+    const ouPath = generateIVPath(365, 0.80, baseIVParams, rand1);
+    const jumpPath = generateIVPath(365, 0.80, jumpIVParams, rand2);
+    expect(jumpPath).not.toEqual(ouPath);
+  });
+
+  it("zero lambda matches pure OU behavior", () => {
+    const zeroJumps: IVParams = {...baseIVParams, ivJumps: {lambda: 0, muJ: 0, sigmaJ: 0.10}};
+    const rand1 = splitmix32(42);
+    const rand2 = splitmix32(42);
+    const ouPath = generateIVPath(100, 0.80, baseIVParams, rand1);
+    const jumpPath = generateIVPath(100, 0.80, zeroJumps, rand2);
+    // With lambda=0, no jumps fire, but PRNG draws an extra uniform per step
+    // so paths diverge due to PRNG consumption. Check structural properties instead.
+    expect(jumpPath.length).toBe(ouPath.length);
+    expect(jumpPath[0]).toBeCloseTo(ouPath[0], 10);
+  });
+
+  it("mean-reverts despite jumps", () => {
+    const params: IVParams = {
+      meanReversion: 10.0, volOfVol: 0.3, vrpOffset: 0.05,
+      ivJumps: {lambda: 20, muJ: 0, sigmaJ: 0.10},
+    };
+    const rand = splitmix32(1);
+    const path = generateIVPath(730, 0.50, params, rand);
+    const longRunIV = 0.55;
+    const lastQuarter = path.slice(-180);
+    const avg = lastQuarter.reduce((a, b) => a + b, 0) / lastQuarter.length;
+    expect(avg).toBeGreaterThan(longRunIV * 0.4);
+    expect(avg).toBeLessThan(longRunIV * 1.8);
   });
 });

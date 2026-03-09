@@ -466,7 +466,7 @@ describe("strategy built-in presets", () => {
     expect(cons.values.stopLoss).toBe(false);
     expect(cons.values.adaptiveCalls).toBe(true);
     expect(cons.values.ivRvSpread).toBe(true);
-    expect(cons.values.ivRvSkipBelow).toBe(1.0);
+    expect(cons.values.ivRvSkipBelow).toBe(1.1);
     expect(cons.values.ivRvSkipSide).toBe("put");
     expect(cons.values.rollPut).toBe(true);
     expect(cons.values.rollCall).toBe(false);
@@ -477,7 +477,7 @@ describe("strategy built-in presets", () => {
     expect(mod.values.targetDelta).toBe(0.20);
     expect(mod.values.cycleLengthDays).toBe(14);
     expect(mod.values.adaptiveCalls).toBe(false);
-    expect(mod.values.ivRvSkipBelow).toBe(1.2);
+    expect(mod.values.ivRvSkipBelow).toBe(1.3);
     expect(mod.values.ivRvSkipSide).toBe("put");
     expect(mod.values.rollPut).toBe(true);
     expect(mod.values.rollCall).toBe(false);

@@ -105,6 +105,15 @@ Enabled by setting `ivParams` on `PriceGenConfig`. Has no effect on Heston/Hesto
 | `meanReversion` | number | Speed of mean-reversion (κ). Higher = faster snap-back. 5.0 ≈ 50-day half-life |
 | `volOfVol` | number | Annualized vol-of-vol (ξ). Controls day-to-day IV noise |
 | `vrpOffset` | number | IV mean = annualVol + vrpOffset (decimal). 0.02 = 2% permanent IV premium |
+| `ivJumps` | IVJumpParams? | Optional Poisson jump component. When set, IV receives sudden jumps on top of OU diffusion |
+
+#### IVJumpParams
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `lambda` | number | Jump intensity (jumps/year). 10 ≈ one jump every ~5 weeks |
+| `muJ` | number | Mean jump size (decimal). 0 = symmetric jumps |
+| `sigmaJ` | number | Jump size std (decimal). 0.15 = ±15% IV jumps |
 
 ### IV Path Threading
 
