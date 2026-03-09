@@ -143,7 +143,7 @@ export function classifyRegime(underlyingReturn: number, days: number): "bull" |
   return "sideways";
 }
 
-function countFullCycles(signalLog: SignalLogEntry[]): number {
+export function countFullCycles(signalLog: SignalLogEntry[]): number {
   return signalLog.filter(
     (entry) => entry.events.some(
       (e) => e.type === "OPTION_EXPIRED" && e.optionType === "call" && e.assigned,
@@ -151,7 +151,7 @@ function countFullCycles(signalLog: SignalLogEntry[]): number {
   ).length;
 }
 
-function summarizeRun(
+export function summarizeRun(
   seed: number,
   result: SimulationResult,
   prices: number[],
