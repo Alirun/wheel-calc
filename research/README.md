@@ -502,21 +502,44 @@ Sweep scripts should use **multi-threaded execution** (e.g., Node.js `worker_thr
 - **Conclusion:** **Framework is deployment-ready.** Both Conservative and Aggressive presets now ship with position sizing that keeps MaxDD < 40% while preserving positive Sharpe. No further research blocks deployment.
 - **Action Taken:** Full analysis in `research/sweep23/SWEEP23_ANALYSIS.md`. Presets shipped: Conservative (VS-40/45 + CS-50/45), Aggressive (VS-40/45). Moderate removed. UI extended. 345 tests passing.
 
+### Experiment 24: Multi-Asset Validation (BTC)
+- **Goal:** Validate whether the wheel strategy framework — developed and optimized against ETH data in Exps 1–23 — generalizes to BTC. First multi-asset test.
+- **Data Source:** BTC DVOL + BTC-PERPETUAL daily closes from Deribit (2021-03-24 → 2026-03-11, 1,814 aligned days). ETH data from Exp 16 cache for cross-asset comparison.
+- **Approach:** Combined Exp 16 (IV dynamics) + Exp 18 (historical backtest) + Exp 20/23 (rolling window) for BTC. Both strategies with final shipped sizing configs. Single script, 1.27s.
+- **Results:**
+  - **IV Dynamics:** BTC κ=6.60 (OU-compatible, ETH: 5.55). VRP 9.64% (ETH: 6.35%). Skip rate at t=1.2: 45.3% (ETH: 61.8%). BTC IV is smoother (ΔIV std 3.45% vs 3.93%) with identical fat-tail kurtosis (27.0).
+  - **Full Period:** BTC Conservative Sharpe 0.127, MaxDD 34.0%. BTC Aggressive Sharpe 0.499, MaxDD 26.0%. ETH Conservative Sharpe 0.537, ETH Aggressive 0.365. Full-period rankings differ by asset (Aggr > Cons on BTC, Cons > Aggr on ETH).
+  - **Rolling Window (17 × 365d):** BTC Cons mean Sharpe 1.118 / max MaxDD 35.6%. BTC Aggr mean Sharpe 1.043 / max MaxDD 32.7%. Both outperform ETH equivalents (0.964 / 0.601). Paired: Cons wins 9/17, Aggr 8/17, t=0.30 (non-significant).
+- **Key Findings:**
+  1. **BTC IV dynamics are OU-compatible — framework validated for BTC.** κ=6.60 (range 2–10), ACF=0.982, identical fat-tail kurtosis.
+  2. **BTC VRP is higher than ETH (9.64% vs 6.35%).** Above Active floor (5%), borderline Conservative floor (10%). Options systematically more overpriced.
+  3. **BTC skip rate 16.5pp lower than ETH at t=1.2 (45.3% vs 61.8%).** More trade opportunities due to higher VRP.
+  4. **Strategy ranking is asset-dependent.** Conservative dominates on ETH (rolling mean 0.964 vs 0.601), tied on BTC (1.118 vs 1.043, t=0.30).
+  5. **Both strategies meet MaxDD < 40% on BTC.** Cons 35.6%, Aggr 32.7%. Both better than ETH.
+  6. **BTC strategies outperform ETH across all windows.** BTC Cons +16%, BTC Aggr +74% vs ETH equivalents. Lower negative-Sharpe frequency (11.8% vs 35.3% for Aggressive).
+  7. **Full-period results misleading for Conservative.** Skip rate 98.8% (6 puts in 5yr) concentrates full-period Sharpe on few trades. Rolling window captures seasonal opportunities.
+- **Conclusion:** **Framework validated for BTC deployment.** No engine or preset changes needed — same params generalize across assets. Strategy selection is asset-dependent: Conservative for ETH, either for BTC (statistically tied). BTC is a more favorable environment for premium selling (higher VRP, lower IV, lower MaxDD).
+- **Action Taken:** Full analysis in `research/sweep24/SWEEP24_ANALYSIS.md`. BTC data cached in `research/sweep24/data/`. No code changes.
+
 ---
 
 <!-- NOTE: Keep this section at the end of the file. New experiments append above this section; new follow-up ideas append to the list below. -->
 ## Recommended Next Experiments
 
-*Research status after 23 experiments: Both Conservative and Aggressive ship with position sizing (VS-40/45). Conservative includes cold-start cap (CS-50/45). Both achieve max MaxDD < 40% with positive Sharpe on 5yr historical ETH data. Moderate removed (non-viable). Framework is deployment-ready.*
+*Research status after 24 experiments: Both Conservative and Aggressive ship with position sizing (VS-40/45). Conservative includes cold-start cap (CS-50/45). Both achieve max MaxDD < 40% with positive Sharpe on 5yr historical ETH and BTC data. Moderate removed (non-viable). Framework validated for multi-asset deployment (BTC + ETH). Strategy ranking is asset-dependent: Conservative dominates ETH, tied with Aggressive on BTC.*
 
-### Medium — Deployment confidence
+### Medium — Deployment refinement
 
-- **Experiment 24: Multi-Asset Validation (BTC)** — Repeat Exp 16 + Exp 18 against BTC DVOL + BTC-PERPETUAL data from Deribit. BTC has different vol dynamics (lower baseline vol, different VRP structure). Key question: does Conservative's dominance hold on BTC, or is it ETH-specific? Requires data acquisition step (Deribit API, same module as Exp 16).
+- **Experiment 25: Cross-Asset Portfolio Analysis** — Run Conservative + Aggressive on BTC and ETH simultaneously and measure portfolio-level Sharpe, MaxDD, and diversification benefit. Exp 24 showed BTC and ETH have different strategy rankings (Conservative dominates ETH, tied on BTC) and different win-window patterns. Key questions: what is the correlation between BTC and ETH wheel returns? Does combining assets reduce portfolio MaxDD below individual-asset levels? What allocation (equal weight vs vol-weighted) maximizes portfolio Sharpe? No engine changes needed — run existing backtests on both assets, combine equity curves externally.
+
+- **Experiment 26: Sized Strategy Cost Sensitivity on Real Data** — Re-run Exp 13's cost sweep (bid-ask spread, per-trade fee) on the final sized configurations (Conservative VS+CS, Aggressive VS) against historical data for both ETH and BTC. Exp 13 answered the core question using MC with unsized strategies (Sharpe ≥ 0.39 even at 12% spread / $2.00 fee), so the risk is low. Value: confirm break-even friction levels for the specific preset configs that ship, on both assets. No engine changes needed — parameter sweep only.
 
 ### Low — Nice to have
 
-- **Experiment 25: Sized Strategy Cost Sensitivity on Real Data** — Re-run Exp 13's cost sweep (bid-ask spread, per-trade fee) on the final sized configurations (Conservative VS+CS, Active VS) against historical data. Exp 13 answered the core question using MC with unsized strategies (Active Sharpe ≥ 0.39 even at 12% spread / $2.00 fee), so the risk is low. Value: confirm break-even friction levels for the specific preset configs that ship. No engine changes needed — parameter sweep only.
+- **Experiment 27: BTC Conservative Trade Frequency** — *(Opened by Exp 24.)* BTC Conservative executed only 6 puts in 5yr (skip rate 98.8%, 2.6 puts/window avg), far fewer than ETH Conservative (11 puts, 3.0/window). Full-period Sharpe suffered (0.127 vs 0.537 ETH) despite strong rolling-window mean (1.118). Sweep `skipBelowRatio` ∈ {0.9, 1.0, 1.05, 1.1} and `cycleDays` ∈ {14, 21, 30} on BTC data to test whether relaxing the IV/RV filter increases Conservative trade frequency without degrading rolling Sharpe. Could justify BTC-specific preset params. No engine changes needed.
 
-- **Experiment 26: Vol-Target Sensitivity in MC** — *(Opened by Exp 21.)* VS-40/45 has higher Sharpe cost for Active at 80% vol in MC (−0.159 ΔSharpe) than on historical data (−0.056). Sweep `volTarget` ∈ {30%, 40%, 50%, 60%} × `volLookbackDays` ∈ {30, 45, 60} under MC at 60–80% vol. May reveal that a higher volTarget (50–60%) is better for high-vol MC environments. No engine changes needed — parameter sweep only. *(Deprioritized: current VS-40/45 works well on historical data; this refines behavior in synthetic scenarios only.)*
+- **Experiment 28: Vol-Target Sensitivity in MC** — *(Opened by Exp 21.)* VS-40/45 has higher Sharpe cost for Aggressive at 80% vol in MC (−0.159 ΔSharpe) than on historical data (−0.056). Sweep `volTarget` ∈ {30%, 40%, 50%, 60%} × `volLookbackDays` ∈ {30, 45, 60} under MC at 60–80% vol. May reveal that a higher volTarget (50–60%) is better for high-vol MC environments. No engine changes needed — parameter sweep only. *(Deprioritized: current VS-40/45 works well on historical data; this refines behavior in synthetic scenarios only.)*
 
-- **Experiment 27: Adaptive Strategy Switching** — Test regime-dependent switching between Conservative and Active based on trailing market metrics (e.g., 60d return, RV level, IV/RV ratio trend). Exp 20 showed complementary win patterns: Active wins 7/17 windows (bear-to-recovery, strong bull), Conservative wins 5/17 (post-crash recovery, recent volatile markets). If regime transitions can be detected with ~30d lag, a switching strategy could outperform either alone. No engine changes needed (run both strategies on windows, switch externally), but speculative — regime detection accuracy across overlapping windows is hard to validate.
+- **Experiment 29: Adaptive Strategy Switching** — Test regime-dependent switching between Conservative and Aggressive based on trailing market metrics (e.g., 60d return, RV level, IV/RV ratio trend). Exp 20 showed complementary win patterns on ETH; Exp 24 showed strategies are tied on BTC with Aggressive winning bear periods (2025 BTC: Aggr +0.163 Sharpe vs Cons −0.775). Switching could also be cross-asset (allocate more to BTC Aggressive in bears, ETH Conservative in recovery). No engine changes needed (run both strategies on windows, switch externally), but speculative — regime detection accuracy is hard to validate.
+
+- **Experiment 30: Additional Asset Validation (SOL)** — Extend multi-asset validation to SOL. Deribit lists SOL options with DVOL. SOL has higher baseline vol, lower liquidity, and different market microstructure than BTC/ETH. Key question: does the framework generalize to a third asset, or do SOL-specific dynamics (higher vol, thinner books) break the OU model assumptions? Same approach as Exp 24 (IV dynamics + backtest + rolling window). Requires SOL DVOL + SOL-PERPETUAL data acquisition.
