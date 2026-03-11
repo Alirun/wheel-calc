@@ -1,51 +1,27 @@
 # Wheel Strategy — Future Improvements
 
-## Put Selling Phase (Cash Secured)
-
-### Medium Impact
-- [ ] **Put spread instead of naked put** — Buy a further OTM put as protection (e.g., sell 30-delta, buy 10-delta). Caps max loss, reduces capital requirement, at the cost of some premium.
-
-### Lower Impact
-- [ ] **Event-aware cycle skipping** — Skip put-selling cycles around known high-vol events (major protocol upgrades, macro announcements) where realized vol is likely to exceed implied vol.
-- [ ] **IV skew awareness** — Target strikes where skew is steepest for better risk-adjusted premium. Puts often carry skew premium that can be exploited.
+> **Closed.** All items assessed against the research program (Exps 1–24). Everything is either implemented, solved by a different mechanism, or not worth pursuing. This file is kept for historical reference only.
 
 ---
 
-## Call Selling Phase (Covered)
+## Implemented / Solved by Research
 
-### Medium Impact
-- [ ] **Staggered covered calls** — If holding multiple units, sell calls at different strikes/dates. Some closer ATM (higher premium), some further OTM (upside participation). Diversifies assignment risk.
-- [ ] **Trend-based call skipping** — When the asset is in a strong uptrend (e.g., above 20-day MA by X%), skip selling calls entirely to capture the move. Current skip logic is premium-based; a trend-based skip would be more strategic.
-
-### Lower Impact
-- [ ] **Collar strategy when underwater** — When unrealized loss exceeds a threshold, buy a protective put in addition to selling the covered call. Caps further downside at the cost of premium.
-
----
-
-## Position Management & Risk
-
-### High Impact
-- [ ] **Portfolio-level delta management** — Track net portfolio delta and adjust strategy to stay within a target range. Becomes useful when multi-contract support is added.
-
-### Medium Impact
-- [ ] **Capital efficiency tracking** — Track return on capital deployed (not just P/L). A put tying up $2,500 for $50 premium is different from one tying up $1,500 for $40.
-- [ ] **Assignment cost averaging** — If assigned on a put and price drops further, sell another put at a lower strike. When assigned again, average entry is lower. (Aggressive variant of the wheel.)
+- [x] **Put spread / naked put protection** — Solved by position sizing (VS-40/45 + cold-start cap). Exps 21–22. MaxDD 72% → 37%.
+- [x] **Event-aware cycle skipping** — Superseded by regime filter (per-trade IV/RV check). Exps 4–5. Exp 14 proved additional signals are destructive.
+- [x] **Collar strategy when underwater** — Solved by position sizing. Exps 21–22.
+- [x] **Trend-based call skipping** — Implemented as Adaptive Calls. Exp 6 validated: helps Conservative, hurts others.
+- [x] **Transaction cost sensitivity** — Fully swept. Exp 13. Active Sharpe ≥ 0.39 even at 12% spread / $2.00 fee.
+- [x] **Optimal parameter grid search** — Exhaustively swept. Exps 1–7, 19–20. Presets optimized and validated on rolling windows.
+- [x] **Strategy P/L vs underlying return** — Alpha vs buy-and-hold computed in every experiment.
 
 ---
 
-## Volatility & Pricing Model
+## Not Worth Pursuing
 
-### Medium Impact
-- [ ] **Volatility term structure** — Model different IVs for different DTEs. A 7-day and a 30-day option don't share the same vol. Improves strike/DTE selection accuracy.
-
----
-
-## Simulation & Analytics
-
-### Medium Impact
-- [ ] **Greeks evolution over time** — Track portfolio delta, gamma, theta daily. Theta is income; gamma is risk. Visualizing this helps understand when the strategy is most/least exposed.
-- [ ] **Strategy P/L vs underlying return correlation** — Plot strategy P/L against underlying return to show the payoff diagram across scenarios. Reveals where the wheel wins/loses vs holding.
-
-### Lower Impact
-- [ ] **Transaction cost sensitivity analysis** — Sweep bid-ask spread and fees to show how costs erode returns. Helps determine minimum viable premium.
-- [ ] **Optimal parameter grid search** — Search over (delta, DTE, adaptive params) to find the Pareto frontier of return vs risk.
+- [x] **Portfolio-level delta management** — Requires multi-contract engine. Single-contract wheel has one position at a time; delta is binary (0 or 1 ETH). Not applicable until multi-contract support is built, which is not planned.
+- [x] **Staggered covered calls** — Requires multi-contract engine. Exp 6 showed call rolling has zero impact at δ0.10–0.20 because calls never go ITM. Staggering zero-impact calls at different strikes won't change outcomes.
+- [x] **Assignment cost averaging** — Contradicts 24 experiments of evidence. Conservative wins because it minimizes assignments (δ0.10, 95% skip, 11 puts in 5yr). Exp 18 showed Moderate's 92% assignment rate caused a blow-up. "Double down after assignment" goes the wrong direction.
+- [x] **IV skew awareness** — Needs strike-level historical IV data (not just ATM DVOL). Conservative executes ~11 trades in 5 years — optimizing strike selection on 11 trades is noise, not signal.
+- [x] **Volatility term structure** — Would improve MC realism, but research moved past MC in Exps 18–24 with real ETH+BTC data validation. Making a synthetic model marginally more realistic is pointless when real data is available.
+- [x] **Greeks evolution over time** — Pure visualization. Doesn't change what trades the strategy makes or improve Sharpe/MaxDD. Nice-to-have dashboard, not a strategy improvement.
+- [x] **Capital efficiency tracking** — Pure analytics metric. Doesn't change trade decisions. Could be added as a UI feature but is not a research item.
