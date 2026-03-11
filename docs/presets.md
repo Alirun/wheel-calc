@@ -50,9 +50,13 @@ interface PresetStoreJSON<T> {
 
 | Name | Key differences |
 |------|----------------|
-| Default | All form defaults |
-| Conservative | targetDelta 0.15, stopLoss on (20% drawdown) |
-| Aggressive | targetDelta 0.40, rollCall on, rollPut on, minCallDelta 0.05, maxCallDelta 0.65 |
+| Default | All form defaults (sizing off) |
+| Conservative | δ0.10, c30, AC (0.10–0.50), RF (s1.1/lb45, put-only skip), PR (30/14), VS-40/45 + CS-50/45 |
+| Aggressive | δ0.20, c3, RF (s1.2/lb20, put-only skip), VS-40/45 |
+
+**Legend:** δ = targetDelta, c = cycleLengthDays, AC = adaptiveCalls, RF = regime filter (ivRvSpread), PR = put rolling (initialDTE/rollWhenDTE), VS = vol-scaled sizing (volTarget/lookback), CS = cold-start (size/days).
+
+> **Moderate preset removed** (Exp 23). It had negative mean Sharpe across rolling backtests and was dominated in 16/17 windows. Non-viable.
 
 ## Public API (`presets.ts`)
 

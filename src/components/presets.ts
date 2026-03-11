@@ -47,6 +47,12 @@ export interface StrategyPresetValues {
   stopLoss: boolean;
   stopLossDrawdown: number;
   stopLossCooldown: number;
+  sizingMode: "none" | "volScaled";
+  sizingVolTarget: number;
+  sizingVolLookback: number;
+  sizingMinSize: number;
+  sizingColdStartDays: number;
+  sizingColdStartSize: number;
 }
 
 export interface Preset<T> {
@@ -146,7 +152,13 @@ export function defaultStrategyValues(): StrategyPresetValues {
     rollPutRequireCredit: true,
     stopLoss: false,
     stopLossDrawdown: 30,
-    stopLossCooldown: 7
+    stopLossCooldown: 7,
+    sizingMode: "none",
+    sizingVolTarget: 40,
+    sizingVolLookback: 45,
+    sizingMinSize: 0.10,
+    sizingColdStartDays: 0,
+    sizingColdStartSize: 1.0
   };
 }
 
@@ -203,7 +215,13 @@ export function validateStrategyValues(raw: unknown): StrategyPresetValues {
     rollPutRequireCredit: bool(r.rollPutRequireCredit, d.rollPutRequireCredit),
     stopLoss: bool(r.stopLoss, d.stopLoss),
     stopLossDrawdown: num(r.stopLossDrawdown, d.stopLossDrawdown, 5, 50),
-    stopLossCooldown: num(r.stopLossCooldown, d.stopLossCooldown, 0, 30)
+    stopLossCooldown: num(r.stopLossCooldown, d.stopLossCooldown, 0, 30),
+    sizingMode: oneOf(r.sizingMode, d.sizingMode, ["none", "volScaled"]),
+    sizingVolTarget: num(r.sizingVolTarget, d.sizingVolTarget, 10, 100),
+    sizingVolLookback: num(r.sizingVolLookback, d.sizingVolLookback, 10, 120),
+    sizingMinSize: num(r.sizingMinSize, d.sizingMinSize, 0.01, 1.0),
+    sizingColdStartDays: num(r.sizingColdStartDays, d.sizingColdStartDays, 0, 120),
+    sizingColdStartSize: num(r.sizingColdStartSize, d.sizingColdStartSize, 0.01, 1.0)
   };
 }
 
@@ -307,27 +325,13 @@ export const STRATEGY_BUILT_INS: Preset<StrategyPresetValues>[] = [
       rollPutWhenBelow: 14,
       rollPutRequireCredit: true,
       stopLoss: false,
-      rollCall: false
-    },
-    builtIn: true,
-    createdAt: "2024-01-01T00:00:00.000Z"
-  },
-  {
-    name: "Moderate",
-    values: {
-      ...defaultStrategyValues(),
-      targetDelta: 0.20,
-      cycleLengthDays: 14,
-      adaptiveCalls: false,
-      ivRvSpread: true,
-      ivRvSkipBelow: 1.3,
-      ivRvSkipSide: "put",
-      rollPut: true,
-      rollPutInitialDTE: 14,
-      rollPutWhenBelow: 7,
-      rollPutRequireCredit: true,
-      stopLoss: false,
-      rollCall: false
+      rollCall: false,
+      sizingMode: "volScaled",
+      sizingVolTarget: 40,
+      sizingVolLookback: 45,
+      sizingMinSize: 0.10,
+      sizingColdStartDays: 45,
+      sizingColdStartSize: 0.50
     },
     builtIn: true,
     createdAt: "2024-01-01T00:00:00.000Z"
@@ -344,7 +348,11 @@ export const STRATEGY_BUILT_INS: Preset<StrategyPresetValues>[] = [
       ivRvSkipSide: "put",
       rollPut: false,
       rollCall: false,
-      stopLoss: false
+      stopLoss: false,
+      sizingMode: "volScaled",
+      sizingVolTarget: 40,
+      sizingVolLookback: 45,
+      sizingMinSize: 0.10
     },
     builtIn: true,
     createdAt: "2024-01-01T00:00:00.000Z"

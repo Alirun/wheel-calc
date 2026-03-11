@@ -479,24 +479,43 @@ Sweep scripts should use **multi-threaded execution** (e.g., Node.js `worker_thr
 - **Conclusion:** **Conservative's deployment blocker is resolved.** Recommended config: `coldStartDays: 45, coldStartSize: 0.50` on top of VS-40/45. This achieves 37.7% max MaxDD (rolling) / 36.1% (full-period) with 113.9% Sharpe preservation — both better risk and better return than the unsized baseline. Active should continue using VS-40/45 without cold-start. Both strategies now achieve max MaxDD < 40% with positive Sharpe. The framework is deployment-ready.
 - **Action Taken:** Full analysis in `research/sweep22/SWEEP22_ANALYSIS.md`. Engine extended: `coldStartDays` and `coldStartSize` added to `PositionSizingConfig`, cold-start cap applied in `computeSizingMultiplier`. 4 new tests, 341 total passing.
 
+### Experiment 23: Preset Integration & Final Validation
+- **Goal:** Ship the research findings. Add `positionSizing` to Conservative and Aggressive presets, remove Moderate, re-run rolling-window + full-period validation with sizing enabled. No new research — integration and final sign-off.
+- **Data Source:** Same as Exps 18–22: ETH-PERPETUAL + ETH DVOL, 1,812 aligned days (2021-03-24 → 2026-03-09). 17 rolling 365-day windows (stride 90d).
+- **Approach:** 4 strategies (Conservative baseline/sized, Active baseline/sized) × 17 windows + full-period + sub-period analysis. 92 total backtests, 0.06s.
+- **Changes Made:**
+  - `StrategyPresetValues` extended with 6 position sizing fields (`sizingMode`, `sizingVolTarget`, `sizingVolLookback`, `sizingMinSize`, `sizingColdStartDays`, `sizingColdStartSize`)
+  - Conservative preset: added VS-40/45 + CS-50/45
+  - Aggressive preset: added VS-40/45 (no cold-start)
+  - Moderate preset: removed from `STRATEGY_BUILT_INS`
+  - Simulator UI: Position Sizing section added
+  - 345 tests passing (4 new sizing validation tests)
+- **Results:**
+  - **Conservative Sized:** Mean Sharpe **0.964** (+14.0% vs baseline 0.846), max MaxDD **37.7%** (−33.9pp vs 71.7%). Full-period: Sharpe 0.537, APR 34.8%, MaxDD 36.1%. Sharpe wins 14/17 windows.
+  - **Active Sized:** Mean Sharpe **0.601** (−8.5% vs baseline 0.657), max MaxDD **38.0%** (−27.1pp vs 65.1%). Full-period: Sharpe 0.365, APR 25.3%, MaxDD 30.2%. MaxDD wins 13/17 windows.
+- **Key Findings:**
+  1. **Both strategies meet MaxDD < 40% target.** Conservative: 37.7% (rolling) / 36.1% (full-period). Active: 38.0% (rolling) / 30.2% (full-period). Deployment blocker resolved.
+  2. **Conservative sizing is a pure improvement.** Improves both Sharpe (+14.0%) and MaxDD (−33.9pp). Cold-start cap avoids net-negative early trades; vol-scaling reduces exposure during high-vol crashes.
+  3. **Active sizing is a favorable tradeoff.** Costs 8.5% Sharpe for 41.6% MaxDD reduction — the drawdown at deployment scale is dramatically more survivable.
+  4. **Results match Exps 20–22 exactly.** Perfect reproducibility confirms zero behavioral changes from preset integration.
+  5. **Moderate removal confirmed.** Negative mean Sharpe, 124.7% MaxDD on real data, dominated in 16/17 windows.
+- **Conclusion:** **Framework is deployment-ready.** Both Conservative and Aggressive presets now ship with position sizing that keeps MaxDD < 40% while preserving positive Sharpe. No further research blocks deployment.
+- **Action Taken:** Full analysis in `research/sweep23/SWEEP23_ANALYSIS.md`. Presets shipped: Conservative (VS-40/45 + CS-50/45), Aggressive (VS-40/45). Moderate removed. UI extended. 345 tests passing.
+
 ---
 
 <!-- NOTE: Keep this section at the end of the file. New experiments append above this section; new follow-up ideas append to the list below. -->
 ## Recommended Next Experiments
 
-*Research status after 22 experiments: Both Conservative and Active achieve max MaxDD < 40% with positive Sharpe. Conservative uses VS-40/45 + cold-start cap (CS-50/45). Active uses VS-40/45. Moderate confirmed non-viable (negative mean Sharpe, dominated in 16/17 rolling windows). No remaining deployment blockers.*
-
-### High — Ship it
-
-- **Experiment 23: Preset Integration & Final Validation** — Add `positionSizing` with VS-40/45 + cold-start (CS-50/45) to Conservative preset and VS-40/45 to Active preset. Remove or deprecate Moderate preset (Exp 20: negative mean Sharpe, dominated in 16/17 windows). Re-run full Exp 20 rolling-window validation and Exp 18 full-period backtest with sizing enabled. Confirm final deployed Sharpe/MaxDD numbers and update preset documentation. No new research — integration and final sign-off.
+*Research status after 23 experiments: Both Conservative and Aggressive ship with position sizing (VS-40/45). Conservative includes cold-start cap (CS-50/45). Both achieve max MaxDD < 40% with positive Sharpe on 5yr historical ETH data. Moderate removed (non-viable). Framework is deployment-ready.*
 
 ### Medium — Deployment confidence
 
 - **Experiment 24: Multi-Asset Validation (BTC)** — Repeat Exp 16 + Exp 18 against BTC DVOL + BTC-PERPETUAL data from Deribit. BTC has different vol dynamics (lower baseline vol, different VRP structure). Key question: does Conservative's dominance hold on BTC, or is it ETH-specific? Requires data acquisition step (Deribit API, same module as Exp 16).
 
-- **Experiment 25: Transaction Cost Sensitivity** — Sweep bid-ask spread (0–2%) and per-trade fees (0–0.1%) to find break-even friction levels for Conservative and Active with final sizing configs. Current simulations assume frictionless execution; real deployment faces spread costs on option entry/exit and underlying assignment/delivery. Can be modeled externally (subtract `frictionBps × notional × numTrades` from final P&L) — no engine changes needed. Key output: maximum tolerable round-trip cost before Sharpe turns negative.
-
 ### Low — Nice to have
+
+- **Experiment 25: Sized Strategy Cost Sensitivity on Real Data** — Re-run Exp 13's cost sweep (bid-ask spread, per-trade fee) on the final sized configurations (Conservative VS+CS, Active VS) against historical data. Exp 13 answered the core question using MC with unsized strategies (Active Sharpe ≥ 0.39 even at 12% spread / $2.00 fee), so the risk is low. Value: confirm break-even friction levels for the specific preset configs that ship. No engine changes needed — parameter sweep only.
 
 - **Experiment 26: Vol-Target Sensitivity in MC** — *(Opened by Exp 21.)* VS-40/45 has higher Sharpe cost for Active at 80% vol in MC (−0.159 ΔSharpe) than on historical data (−0.056). Sweep `volTarget` ∈ {30%, 40%, 50%, 60%} × `volLookbackDays` ∈ {30, 45, 60} under MC at 60–80% vol. May reveal that a higher volTarget (50–60%) is better for high-vol MC environments. No engine changes needed — parameter sweep only. *(Deprioritized: current VS-40/45 works well on historical data; this refines behavior in synthetic scenarios only.)*
 

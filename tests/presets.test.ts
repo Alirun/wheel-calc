@@ -80,6 +80,12 @@ describe("defaultStrategyValues", () => {
     expect(v.stopLoss).toBe(false);
     expect(v.stopLossDrawdown).toBe(30);
     expect(v.stopLossCooldown).toBe(7);
+    expect(v.sizingMode).toBe("none");
+    expect(v.sizingVolTarget).toBe(40);
+    expect(v.sizingVolLookback).toBe(45);
+    expect(v.sizingMinSize).toBe(0.10);
+    expect(v.sizingColdStartDays).toBe(0);
+    expect(v.sizingColdStartSize).toBe(1.0);
   });
 });
 
@@ -177,6 +183,35 @@ describe("validateStrategyValues", () => {
     expect(validateStrategyValues(null)).toEqual(defaultStrategyValues());
     expect(validateStrategyValues("corrupt")).toEqual(defaultStrategyValues());
     expect(validateStrategyValues(42)).toEqual(defaultStrategyValues());
+  });
+
+  it("validates sizing fields", () => {
+    const result = validateStrategyValues({sizingMode: "volScaled", sizingVolTarget: 40, sizingVolLookback: 45});
+    expect(result.sizingMode).toBe("volScaled");
+    expect(result.sizingVolTarget).toBe(40);
+    expect(result.sizingVolLookback).toBe(45);
+  });
+
+  it("clamps sizing fields to range", () => {
+    const result = validateStrategyValues({sizingVolTarget: 200, sizingVolLookback: 500, sizingMinSize: 5, sizingColdStartDays: 999, sizingColdStartSize: 10});
+    expect(result.sizingVolTarget).toBe(100);
+    expect(result.sizingVolLookback).toBe(120);
+    expect(result.sizingMinSize).toBe(1.0);
+    expect(result.sizingColdStartDays).toBe(120);
+    expect(result.sizingColdStartSize).toBe(1.0);
+  });
+
+  it("rejects invalid sizingMode, falls back to default", () => {
+    const result = validateStrategyValues({sizingMode: "kelly"});
+    expect(result.sizingMode).toBe("none");
+  });
+
+  it("fills missing sizing fields from defaults", () => {
+    const result = validateStrategyValues({targetDelta: 0.10});
+    expect(result.sizingMode).toBe("none");
+    expect(result.sizingVolTarget).toBe(40);
+    expect(result.sizingColdStartDays).toBe(0);
+    expect(result.sizingColdStartSize).toBe(1.0);
   });
 });
 
@@ -470,18 +505,17 @@ describe("strategy built-in presets", () => {
     expect(cons.values.ivRvSkipSide).toBe("put");
     expect(cons.values.rollPut).toBe(true);
     expect(cons.values.rollCall).toBe(false);
+    expect(cons.values.sizingMode).toBe("volScaled");
+    expect(cons.values.sizingVolTarget).toBe(40);
+    expect(cons.values.sizingVolLookback).toBe(45);
+    expect(cons.values.sizingMinSize).toBe(0.10);
+    expect(cons.values.sizingColdStartDays).toBe(45);
+    expect(cons.values.sizingColdStartSize).toBe(0.50);
   });
 
-  it("Moderate preset has expected values", () => {
-    const mod = STRATEGY_BUILT_INS.find(p => p.name === "Moderate")!;
-    expect(mod.values.targetDelta).toBe(0.20);
-    expect(mod.values.cycleLengthDays).toBe(14);
-    expect(mod.values.adaptiveCalls).toBe(false);
-    expect(mod.values.ivRvSkipBelow).toBe(1.3);
-    expect(mod.values.ivRvSkipSide).toBe("put");
-    expect(mod.values.rollPut).toBe(true);
-    expect(mod.values.rollCall).toBe(false);
-    expect(mod.values.stopLoss).toBe(false);
+  it("Moderate preset is removed (non-viable per Exp 20)", () => {
+    const mod = STRATEGY_BUILT_INS.find(p => p.name === "Moderate");
+    expect(mod).toBeUndefined();
   });
 
   it("Aggressive preset has expected values", () => {
@@ -494,6 +528,12 @@ describe("strategy built-in presets", () => {
     expect(agg.values.rollPut).toBe(false);
     expect(agg.values.rollCall).toBe(false);
     expect(agg.values.stopLoss).toBe(false);
+    expect(agg.values.sizingMode).toBe("volScaled");
+    expect(agg.values.sizingVolTarget).toBe(40);
+    expect(agg.values.sizingVolLookback).toBe(45);
+    expect(agg.values.sizingMinSize).toBe(0.10);
+    expect(agg.values.sizingColdStartDays).toBe(0);
+    expect(agg.values.sizingColdStartSize).toBe(1.0);
   });
 });
 

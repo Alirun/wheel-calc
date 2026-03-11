@@ -261,8 +261,22 @@ const stopLossParams = view(Inputs.form({
 }));
 ```
 
+<hr style="margin:0.5rem 0;border:0;border-top:1px solid var(--theme-foreground-faintest)">
+<h4 style="margin:0.25rem 0">Position Sizing</h4>
+
 ```js
-const strategyParams = {...coreParams, ...adaptiveCallsParams, ...ivRvParams, ...rollCallParams, ...rollPutParams, ...stopLossParams};
+const sizingParams = view(Inputs.form({
+  sizingMode: Inputs.select(["none", "volScaled"], {value: sd.sizingMode, label: "Sizing mode"}),
+  sizingVolTarget: Inputs.range([10, 100], {value: sd.sizingVolTarget, step: 5, label: "Vol target (%)"}),
+  sizingVolLookback: Inputs.range([10, 120], {value: sd.sizingVolLookback, step: 5, label: "Vol lookback (days)"}),
+  sizingMinSize: Inputs.range([0.01, 1.0], {value: sd.sizingMinSize, step: 0.01, label: "Min size multiplier"}),
+  sizingColdStartDays: Inputs.range([0, 120], {value: sd.sizingColdStartDays, step: 5, label: "Cold-start days (0=off)"}),
+  sizingColdStartSize: Inputs.range([0.01, 1.0], {value: sd.sizingColdStartSize, step: 0.01, label: "Cold-start size cap"}),
+}));
+```
+
+```js
+const strategyParams = {...coreParams, ...adaptiveCallsParams, ...ivRvParams, ...rollCallParams, ...rollPutParams, ...stopLossParams, ...sizingParams};
 ```
 
   </div>
@@ -351,6 +365,18 @@ const strategyConfig = {
     stopLoss: {
       drawdownPct: strategyParams.stopLossDrawdown / 100,
       cooldownDays: strategyParams.stopLossCooldown,
+    }
+  } : {}),
+  ...(strategyParams.sizingMode !== "none" ? {
+    positionSizing: {
+      mode: strategyParams.sizingMode,
+      volTarget: strategyParams.sizingVolTarget / 100,
+      volLookbackDays: strategyParams.sizingVolLookback,
+      minSize: strategyParams.sizingMinSize,
+      ...(strategyParams.sizingColdStartDays > 0 ? {
+        coldStartDays: strategyParams.sizingColdStartDays,
+        coldStartSize: strategyParams.sizingColdStartSize,
+      } : {}),
     }
   } : {})
 };
