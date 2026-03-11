@@ -183,12 +183,16 @@ Optional. When present, `simulate()` applies a dynamic multiplier (0–1) to `co
 | `volTarget` | number | 0.60 | Vol-scaled: target annualized realized vol |
 | `volLookbackDays` | number | 30 | Vol-scaled: lookback for RV computation |
 | `minSize` | number | 0.10 | Floor multiplier — prevents going to zero contracts |
+| `coldStartDays` | number? | — | When set (with `coldStartSize`), cap the multiplier during `day < coldStartDays` |
+| `coldStartSize` | number? | — | Maximum multiplier during the cold-start period. Both fields required for cold-start to activate |
 
 **Mode details:**
 
 - **fractionalKelly**: `multiplier = kellyFraction × (p·W − q·L) / W` from trailing cycle P/L history. Cold start (no completed cycles): full size. All wins or all losses: clamps to 1 or minSize.
 - **trailingReturn**: Reduces size when trailing N-day portfolio return is in drawdown. Linear interpolation between threshold steps. No drawdown: full size.
 - **volScaled**: `multiplier = min(1, volTarget / trailingRV)`. Higher realized vol → smaller position. RV unavailable (insufficient history): full size.
+
+**Cold-start cap:** When both `coldStartDays` and `coldStartSize` are set, the computed multiplier is capped during the initialization period: `if day < coldStartDays: multiplier = min(multiplier, coldStartSize)`. This applies on top of any sizing mode and prevents large positions before the strategy has accumulated enough market history. Typical use: `coldStartDays: 45, coldStartSize: 0.50` with vol-scaled mode — limits exposure during the first 45 days while realized vol estimates are unreliable.
 
 **Integration point:** In `simulate()`, before `executor.execute()` on put sale days, `computeSizingMultiplier()` determines `effectiveContracts = config.contracts × multiplier`. Call sales and option lifecycle events (expiry, roll, assignment) use the contracts from the open position, not a freshly computed size.
 

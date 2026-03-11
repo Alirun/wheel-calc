@@ -626,6 +626,44 @@ describe("computeSizingMultiplier", () => {
     );
     expect(mult).toBe(1);
   });
+
+  it("applies cold-start cap during cold-start period", () => {
+    const mult = computeSizingMultiplier(
+      { mode: "volScaled", volTarget: 5.0, volLookbackDays: 20, coldStartDays: 45, coldStartSize: 0.50 },
+      [], [], Array(30).fill(2500), 10, 2500,
+    );
+    expect(mult).toBe(0.50);
+  });
+
+  it("lifts cold-start cap after cold-start period", () => {
+    const mult = computeSizingMultiplier(
+      { mode: "volScaled", volTarget: 5.0, volLookbackDays: 20, coldStartDays: 45, coldStartSize: 0.50 },
+      [], [], Array(50).fill(2500), 46, 2500,
+    );
+    expect(mult).toBe(1);
+  });
+
+  it("cold-start cap does not override smaller computed value", () => {
+    const states: DailyState[] = [
+      { day: 0, price: 2500, phase: "idle_cash", cumulativePL: 0, unrealizedPL: 0, holdingETH: false },
+      { day: 1, price: 2500, phase: "idle_cash", cumulativePL: -500, unrealizedPL: 0, holdingETH: false },
+    ];
+    const mult = computeSizingMultiplier(
+      { mode: "trailingReturn", returnLookbackDays: 30,
+        returnThresholds: [{ drawdown: 0.10, sizeMult: 0.25 }],
+        coldStartDays: 45, coldStartSize: 0.50 },
+      [], states, [2500, 2500], 1, 2500,
+    );
+    expect(mult).toBe(0.25);
+  });
+
+  it("no-ops when only coldStartDays is set without coldStartSize", () => {
+    const mult = computeSizingMultiplier(
+      { mode: "volScaled", volTarget: 5.0, volLookbackDays: 20, coldStartDays: 45 },
+      [], [], Array(30).fill(2500), 10, 2500,
+    );
+    expect(mult).toBe(1);
+  });
 });
 
 describe("simulate with positionSizing", () => {

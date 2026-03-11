@@ -114,6 +114,8 @@ export interface PositionSizingConfig {
   volTarget?: number;
   volLookbackDays?: number;
   minSize?: number;
+  coldStartDays?: number;
+  coldStartSize?: number;
 }
 
 export interface StrategyConfig {

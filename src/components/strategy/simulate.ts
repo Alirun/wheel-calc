@@ -93,16 +93,18 @@ export function computeSizingMultiplier(
   capitalAtRisk: number,
 ): number {
   const minSize = sizing.minSize ?? 0.1;
+  let mult: number;
   switch (sizing.mode) {
     case "fractionalKelly":
-      return computeKellyMultiplier(
+      mult = computeKellyMultiplier(
         cycles,
         sizing.kellyFraction ?? 0.25,
         sizing.kellyLookbackTrades ?? 10,
         minSize,
       );
+      break;
     case "trailingReturn":
-      return computeTrailingReturnMultiplier(
+      mult = computeTrailingReturnMultiplier(
         dailyStates,
         day,
         sizing.returnLookbackDays ?? 30,
@@ -114,15 +116,21 @@ export function computeSizingMultiplier(
         capitalAtRisk,
         minSize,
       );
+      break;
     case "volScaled":
-      return computeVolScaledMultiplier(
+      mult = computeVolScaledMultiplier(
         prices,
         day,
         sizing.volTarget ?? 0.60,
         sizing.volLookbackDays ?? 30,
         minSize,
       );
+      break;
   }
+  if (sizing.coldStartDays != null && sizing.coldStartSize != null && day < sizing.coldStartDays) {
+    mult = Math.min(mult, sizing.coldStartSize);
+  }
+  return mult;
 }
 
 export function simulate(
