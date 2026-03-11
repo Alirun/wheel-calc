@@ -19,6 +19,7 @@ export interface OpenOption {
   premium: number;
   openDay: number;
   expiryDay: number;
+  contracts?: number;
 }
 
 export interface PortfolioState {
@@ -49,7 +50,7 @@ export type Signal =
 export type Event =
   | { type: "OPTION_SOLD"; optionType: "put" | "call"; strike: number;
       premium: number; delta: number; fees: number;
-      openDay: number; expiryDay: number }
+      openDay: number; expiryDay: number; contracts?: number }
   | { type: "OPTION_EXPIRED"; optionType: "put" | "call"; strike: number;
       spot: number; assigned: boolean }
   | { type: "ETH_BOUGHT"; price: number; size: number }
@@ -62,7 +63,7 @@ export type Event =
       cost: number; fees: number }
   | { type: "OPTION_ROLLED"; optionType: "put" | "call"; oldStrike: number; newStrike: number;
       newDelta: number; originalPremium: number; rollCost: number;
-      newPremium: number; fees: number; openDay: number; expiryDay: number };
+      newPremium: number; fees: number; openDay: number; expiryDay: number; contracts?: number };
 
 export interface SignalLogEntry {
   day: number;
@@ -104,6 +105,17 @@ export interface StopLossConfig {
   cooldownDays: number;
 }
 
+export interface PositionSizingConfig {
+  mode: "fractionalKelly" | "trailingReturn" | "volScaled";
+  kellyFraction?: number;
+  kellyLookbackTrades?: number;
+  returnLookbackDays?: number;
+  returnThresholds?: { drawdown: number; sizeMult: number }[];
+  volTarget?: number;
+  volLookbackDays?: number;
+  minSize?: number;
+}
+
 export interface StrategyConfig {
   targetDelta: number;
   impliedVol: number;
@@ -117,6 +129,7 @@ export interface StrategyConfig {
   rollCall?: RollCallConfig;
   rollPut?: RollPutConfig;
   stopLoss?: StopLossConfig;
+  positionSizing?: PositionSizingConfig;
 }
 
 export interface DailyState {

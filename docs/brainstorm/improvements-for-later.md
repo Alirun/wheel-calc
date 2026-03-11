@@ -4,7 +4,6 @@
 
 ### Medium Impact
 - [ ] **Put spread instead of naked put** — Buy a further OTM put as protection (e.g., sell 30-delta, buy 10-delta). Caps max loss, reduces capital requirement, at the cost of some premium.
-- [ ] **Position sizing / multiple puts** — Sell multiple puts at different strikes or expirations to create a "put spread ladder". Scale position size based on portfolio delta or max loss tolerance.
 
 ### Lower Impact
 - [ ] **Event-aware cycle skipping** — Skip put-selling cycles around known high-vol events (major protocol upgrades, macro announcements) where realized vol is likely to exceed implied vol.
@@ -26,7 +25,6 @@
 ## Position Management & Risk
 
 ### High Impact
-- [ ] **Position sizing via Kelly criterion or risk budget** — Size the number of contracts based on edge (premium/risk ratio) rather than a fixed number. Reduce exposure when premiums don't justify the risk.
 - [ ] **Portfolio-level delta management** — Track net portfolio delta and adjust strategy to stay within a target range. Becomes useful when multi-contract support is added.
 
 ### Medium Impact

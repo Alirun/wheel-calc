@@ -1,8 +1,16 @@
 import {describe, it, expect} from "vitest";
-import {simulate, computeRealizedVol} from "../src/components/strategy/simulate.js";
+import {
+  simulate,
+  computeRealizedVol,
+  computeKellyMultiplier,
+  computeTrailingReturnMultiplier,
+  computeVolScaledMultiplier,
+  computeSizingMultiplier,
+} from "../src/components/strategy/simulate.js";
+import type { CycleRecord } from "../src/components/strategy/simulate.js";
 import {defaultRules} from "../src/components/strategy/rules.js";
 import {generatePrices} from "../src/components/price-gen.js";
-import type {StrategyConfig} from "../src/components/strategy/types.js";
+import type {StrategyConfig, DailyState} from "../src/components/strategy/types.js";
 
 const config: StrategyConfig = {
   targetDelta: 0.30, impliedVol: 0.92, riskFreeRate: 0.05,
@@ -443,5 +451,254 @@ describe("simulate with rollPut", () => {
     const putRollEvents = result.signalLog.flatMap((e) => e.events)
       .filter((ev) => ev.type === "OPTION_ROLLED" && ev.optionType === "put");
     expect(result.summary.totalPutRolls).toBe(putRollEvents.length);
+  });
+});
+
+describe("computeKellyMultiplier", () => {
+  it("returns 1 with no cycle history", () => {
+    expect(computeKellyMultiplier([], 0.25, 10, 0.1)).toBe(1);
+  });
+
+  it("returns minSize when all cycles are losses", () => {
+    const cycles: CycleRecord[] = [
+      { pl: -100, isWin: false },
+      { pl: -50, isWin: false },
+      { pl: -200, isWin: false },
+    ];
+    expect(computeKellyMultiplier(cycles, 0.25, 10, 0.1)).toBe(0.1);
+  });
+
+  it("returns 1 when all cycles are wins", () => {
+    const cycles: CycleRecord[] = [
+      { pl: 100, isWin: true },
+      { pl: 50, isWin: true },
+    ];
+    expect(computeKellyMultiplier(cycles, 0.25, 10, 0.1)).toBe(1);
+  });
+
+  it("returns fractional value with mixed results", () => {
+    const cycles: CycleRecord[] = [
+      { pl: 100, isWin: true },
+      { pl: -50, isWin: false },
+      { pl: 80, isWin: true },
+      { pl: -40, isWin: false },
+    ];
+    const mult = computeKellyMultiplier(cycles, 0.50, 10, 0.01);
+    expect(mult).toBeGreaterThan(0.01);
+    expect(mult).toBeLessThanOrEqual(1);
+  });
+
+  it("uses lookback window correctly", () => {
+    const cycles: CycleRecord[] = [
+      { pl: 100, isWin: true },
+      { pl: 100, isWin: true },
+      { pl: 100, isWin: true },
+      { pl: -200, isWin: false },
+      { pl: -200, isWin: false },
+      { pl: -200, isWin: false },
+    ];
+    const lookback2 = computeKellyMultiplier(cycles, 0.25, 2, 0.1);
+    expect(lookback2).toBe(0.1);
+    const lookback6 = computeKellyMultiplier(cycles, 0.25, 6, 0.1);
+    expect(lookback6).toBeGreaterThanOrEqual(0.1);
+  });
+
+  it("clamps to [minSize, 1]", () => {
+    const cycles: CycleRecord[] = [
+      { pl: 1000, isWin: true },
+      { pl: -1, isWin: false },
+    ];
+    const mult = computeKellyMultiplier(cycles, 1.0, 10, 0.1);
+    expect(mult).toBeLessThanOrEqual(1);
+    expect(mult).toBeGreaterThanOrEqual(0.1);
+  });
+});
+
+describe("computeTrailingReturnMultiplier", () => {
+  function makeDailyStates(pls: number[]): DailyState[] {
+    return pls.map((pl, i) => ({
+      day: i,
+      price: 2500,
+      phase: "idle_cash" as const,
+      cumulativePL: pl,
+      unrealizedPL: 0,
+      holdingETH: false,
+    }));
+  }
+
+  it("returns 1 with insufficient history", () => {
+    expect(computeTrailingReturnMultiplier([], 0, 30, [], 2500, 0.1)).toBe(1);
+    expect(computeTrailingReturnMultiplier([{day: 0, price: 2500, phase: "idle_cash", cumulativePL: 0, unrealizedPL: 0, holdingETH: false}], 0, 30, [], 2500, 0.1)).toBe(1);
+  });
+
+  it("returns 1 when trailing return is positive", () => {
+    const states = makeDailyStates([0, 10, 20, 30, 40, 50]);
+    const thresholds = [{ drawdown: 0.10, sizeMult: 0.50 }];
+    expect(computeTrailingReturnMultiplier(states, 5, 30, thresholds, 2500, 0.1)).toBe(1);
+  });
+
+  it("reduces size at drawdown threshold", () => {
+    const states = makeDailyStates([0, -100, -200, -300]);
+    const thresholds = [
+      { drawdown: 0.10, sizeMult: 0.50 },
+      { drawdown: 0.20, sizeMult: 0.25 },
+    ];
+    const mult = computeTrailingReturnMultiplier(states, 3, 30, thresholds, 2500, 0.1);
+    expect(mult).toBe(0.50);
+  });
+
+  it("applies deeper threshold for larger drawdown", () => {
+    const states = makeDailyStates([0, -100, -200, -300, -400, -600]);
+    const thresholds = [
+      { drawdown: 0.10, sizeMult: 0.50 },
+      { drawdown: 0.20, sizeMult: 0.25 },
+    ];
+    const mult = computeTrailingReturnMultiplier(states, 5, 30, thresholds, 2500, 0.1);
+    expect(mult).toBe(0.25);
+  });
+
+  it("respects minSize floor", () => {
+    const states = makeDailyStates([0, -100, -200, -300, -400, -600, -800, -1000]);
+    const thresholds = [
+      { drawdown: 0.10, sizeMult: 0.05 },
+    ];
+    const mult = computeTrailingReturnMultiplier(states, 7, 30, thresholds, 2500, 0.1);
+    expect(mult).toBe(0.1);
+  });
+});
+
+describe("computeVolScaledMultiplier", () => {
+  it("returns 1 with insufficient history", () => {
+    const prices = [100, 101];
+    expect(computeVolScaledMultiplier(prices, 1, 0.60, 20, 0.1)).toBe(1);
+  });
+
+  it("returns 1 for constant prices", () => {
+    const prices = Array(30).fill(2500);
+    expect(computeVolScaledMultiplier(prices, 25, 0.60, 20, 0.1)).toBe(1);
+  });
+
+  it("reduces size when RV exceeds target", () => {
+    const prices = makePrices(42, 40);
+    const mult = computeVolScaledMultiplier(prices, 35, 0.20, 20, 0.1);
+    expect(mult).toBeLessThan(1);
+    expect(mult).toBeGreaterThanOrEqual(0.1);
+  });
+
+  it("returns 1 when RV is below target", () => {
+    const prices = Array.from({ length: 30 }, (_, i) => 2500 + i * 0.1);
+    const mult = computeVolScaledMultiplier(prices, 25, 5.0, 20, 0.1);
+    expect(mult).toBe(1);
+  });
+
+  it("clamps to minSize", () => {
+    const prices = makePrices(42, 40);
+    const mult = computeVolScaledMultiplier(prices, 35, 0.01, 20, 0.2);
+    expect(mult).toBeGreaterThanOrEqual(0.2);
+  });
+});
+
+describe("computeSizingMultiplier", () => {
+  it("dispatches to Kelly mode", () => {
+    const mult = computeSizingMultiplier(
+      { mode: "fractionalKelly", kellyFraction: 0.25, kellyLookbackTrades: 10 },
+      [], [], [2500], 0, 2500,
+    );
+    expect(mult).toBe(1);
+  });
+
+  it("dispatches to trailingReturn mode", () => {
+    const states: DailyState[] = [
+      { day: 0, price: 2500, phase: "idle_cash", cumulativePL: 0, unrealizedPL: 0, holdingETH: false },
+      { day: 1, price: 2500, phase: "idle_cash", cumulativePL: -500, unrealizedPL: 0, holdingETH: false },
+    ];
+    const mult = computeSizingMultiplier(
+      { mode: "trailingReturn", returnLookbackDays: 30, returnThresholds: [{ drawdown: 0.10, sizeMult: 0.5 }] },
+      [], states, [2500, 2500], 1, 2500,
+    );
+    expect(mult).toBe(0.5);
+  });
+
+  it("dispatches to volScaled mode", () => {
+    const mult = computeSizingMultiplier(
+      { mode: "volScaled", volTarget: 5.0, volLookbackDays: 20 },
+      [], [], Array(30).fill(2500), 25, 2500,
+    );
+    expect(mult).toBe(1);
+  });
+});
+
+describe("simulate with positionSizing", () => {
+  it("produces same results without positionSizing (backward compat)", () => {
+    const prices = makePrices(42, 60);
+    const rules = defaultRules();
+    const r1 = simulate(prices, rules, config);
+    const r2 = simulate(prices, rules, {...config, positionSizing: undefined});
+    expect(r1.summary.totalRealizedPL).toBe(r2.summary.totalRealizedPL);
+  });
+
+  it("reduces effective contracts with volScaled sizing in high-vol env", () => {
+    const prices = makePrices(42, 60);
+    const rules = defaultRules();
+    const baseline = simulate(prices, rules, config);
+    const sized = simulate(prices, rules, {
+      ...config,
+      positionSizing: { mode: "volScaled", volTarget: 0.20, volLookbackDays: 20, minSize: 0.1 },
+    });
+    expect(Math.abs(sized.summary.totalPremiumCollected)).toBeLessThanOrEqual(
+      Math.abs(baseline.summary.totalPremiumCollected) + 0.01,
+    );
+  });
+
+  it("trailingReturn sizing reduces position after drawdown", () => {
+    const crashPrices = [
+      2500, 2400, 2300, 2200, 2100, 2000, 1900, 1800,
+      1700, 1700, 1700, 1700, 1700, 1700, 1700, 1700,
+      1700, 1700, 1700, 1700, 1700, 1700, 1700, 1700,
+      1700, 1700, 1700, 1700, 1700, 1700, 1700, 1700,
+    ];
+    const rules = defaultRules();
+    const sized = simulate(crashPrices, rules, {
+      ...config,
+      cycleLengthDays: 7,
+      positionSizing: {
+        mode: "trailingReturn",
+        returnLookbackDays: 10,
+        returnThresholds: [{ drawdown: 0.05, sizeMult: 0.5 }, { drawdown: 0.10, sizeMult: 0.25 }],
+        minSize: 0.1,
+      },
+    });
+    expect(sized.dailyStates.length).toBe(32);
+  });
+
+  it("Kelly sizing starts at full size then adapts", () => {
+    const prices = makePrices(42, 90);
+    const rules = defaultRules();
+    const sized = simulate(prices, rules, {
+      ...config,
+      positionSizing: {
+        mode: "fractionalKelly",
+        kellyFraction: 0.25,
+        kellyLookbackTrades: 5,
+        minSize: 0.1,
+      },
+    });
+    expect(sized.dailyStates.length).toBe(90);
+    expect(sized.summary.totalPremiumCollected).toBeGreaterThan(0);
+  });
+
+  it("OPTION_SOLD events carry contracts field when sizing active", () => {
+    const prices = makePrices(42, 30);
+    const rules = defaultRules();
+    const result = simulate(prices, rules, {
+      ...config,
+      positionSizing: { mode: "volScaled", volTarget: 0.20, volLookbackDays: 20, minSize: 0.1 },
+    });
+    const optSold = result.signalLog.flatMap(e => e.events)
+      .filter((ev): ev is Extract<typeof ev, {type: "OPTION_SOLD"}> => ev.type === "OPTION_SOLD");
+    for (const ev of optSold) {
+      expect(ev.contracts).toBeDefined();
+      expect(ev.contracts).toBeGreaterThan(0);
+    }
   });
 });

@@ -88,6 +88,7 @@ export class SimExecutor implements Executor {
           fees,
           openDay: market.day,
           expiryDay: market.day + putDTE,
+          contracts: config.contracts,
         }, {
           type: "PREMIUM_COLLECTED",
           grossPremium,
@@ -108,6 +109,7 @@ export class SimExecutor implements Executor {
           fees,
           openDay: market.day,
           expiryDay: market.day + config.cycleLengthDays,
+          contracts: config.contracts,
         }, {
           type: "PREMIUM_COLLECTED",
           grossPremium,
@@ -168,6 +170,7 @@ export class SimExecutor implements Executor {
           fees,
           openDay: market.day,
           expiryDay: market.day + rollDTE,
+          contracts: config.contracts,
         }];
       }
 

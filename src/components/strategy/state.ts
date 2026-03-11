@@ -40,6 +40,7 @@ export function applyEvents(state: PortfolioState, events: Event[]): PortfolioSt
           premium: e.premium,
           openDay: e.openDay,
           expiryDay: e.expiryDay,
+          contracts: e.contracts,
         };
         s.phase = e.optionType === "put" ? "short_put" : "short_call";
         break;
@@ -98,6 +99,7 @@ export function applyEvents(state: PortfolioState, events: Event[]): PortfolioSt
           premium: e.newPremium,
           openDay: e.openDay,
           expiryDay: e.expiryDay,
+          contracts: e.contracts,
         };
         if (e.optionType === "put") s.totalPutRolls++;
         break;
