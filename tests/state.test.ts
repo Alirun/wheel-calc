@@ -222,6 +222,24 @@ describe("applyEvents", () => {
     expect(next.realizedPL).toBe(60 - 55 - 1);
   });
 
+  it("OPTION_ROLLED keeps premium per contract while booking gross premium", () => {
+    const p = {
+      ...initialPortfolio(),
+      phase: "short_call" as const,
+      openOption: {type: "call" as const, strike: 2600, delta: 0.3, premium: 40, openDay: 0, expiryDay: 7, contracts: 3},
+    };
+    const events: Event[] = [{
+      type: "OPTION_ROLLED", optionType: "call", oldStrike: 2600, newStrike: 2900, newDelta: 0.25,
+      originalPremium: 120, rollCost: 165, newPremium: 180, premiumPerContract: 60,
+      fees: 3, openDay: 3, expiryDay: 10, contracts: 3,
+    }];
+    const next = applyEvents(p, events);
+    expect(next.totalPremiumCollected).toBe(180);
+    expect(next.realizedPL).toBe(12);
+    expect(next.openOption!.premium).toBe(60);
+    expect(next.openOption!.contracts).toBe(3);
+  });
+
   it("does not mutate the original state", () => {
     const p = initialPortfolio();
     const events: Event[] = [{type: "CYCLE_SKIPPED", reason: "test"}];

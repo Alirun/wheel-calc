@@ -154,6 +154,7 @@ export class SimExecutor implements Executor {
         const opt = portfolio.openOption;
         const originalPremium = opt.premium * config.contracts;
         const rollCostGross = signal.rollCost * config.contracts;
+        const newPremiumGross = signal.newPremium * config.contracts;
         const fees = 2 * config.feePerTrade * config.contracts;
         const rollDTE = (opt.type === "put" && config.rollPut)
           ? config.rollPut.initialDTE
@@ -166,7 +167,8 @@ export class SimExecutor implements Executor {
           newDelta: signal.newDelta,
           originalPremium,
           rollCost: rollCostGross,
-          newPremium: signal.newPremium,
+          newPremium: newPremiumGross,
+          premiumPerContract: signal.newPremium,
           fees,
           openDay: market.day,
           expiryDay: market.day + rollDTE,

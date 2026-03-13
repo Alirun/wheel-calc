@@ -250,6 +250,31 @@ describe("execute", () => {
     }
   });
 
+  it("ROLL scales newPremium linearly with contracts", () => {
+    const p: PortfolioState = {
+      ...initialPortfolio(),
+      phase: "short_call",
+      position: {size: 3, entryPrice: 2400},
+      openOption: {type: "call", strike: 2600, delta: 0.3, premium: 40, openDay: 0, expiryDay: 7, contracts: 3},
+    };
+    const market: MarketSnapshot = {day: 3, spot: 2800};
+    const multiConfig: StrategyConfig = {...config, contracts: 3};
+    const events = executor.execute(
+      {action: "ROLL", newStrike: 2900, newDelta: 0.25, rollCost: 55, newPremium: 60, credit: 3, rule: "RollCallRule", reason: "test"},
+      market, p, multiConfig,
+    );
+
+    expect(events.length).toBe(1);
+    const e = events[0];
+    expect(e.type).toBe("OPTION_ROLLED");
+    if (e.type === "OPTION_ROLLED") {
+      expect(e.originalPremium).toBe(120);
+      expect(e.rollCost).toBe(165);
+      expect(e.newPremium).toBe(180);
+      expect(e.fees).toBe(3);
+    }
+  });
+
   it("ROLL for put uses rollPut.initialDTE for expiryDay", () => {
     const p: PortfolioState = {
       ...initialPortfolio(),

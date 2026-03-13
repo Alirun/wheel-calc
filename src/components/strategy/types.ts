@@ -63,7 +63,8 @@ export type Event =
       cost: number; fees: number }
   | { type: "OPTION_ROLLED"; optionType: "put" | "call"; oldStrike: number; newStrike: number;
       newDelta: number; originalPremium: number; rollCost: number;
-      newPremium: number; fees: number; openDay: number; expiryDay: number; contracts?: number };
+      newPremium: number; fees: number; openDay: number; expiryDay: number;
+      contracts?: number; premiumPerContract?: number };
 
 export interface SignalLogEntry {
   day: number;

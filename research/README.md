@@ -597,3 +597,32 @@ Sweep scripts should use **multi-threaded execution** (e.g., Node.js `worker_thr
 - **Experiment 29: Adaptive Strategy Switching** — Test regime-dependent switching between Conservative and Aggressive based on trailing market metrics (e.g., 60d return, RV level, IV/RV ratio trend). Exp 20 showed complementary win patterns on ETH; Exp 24 showed strategies are tied on BTC with Aggressive winning bear periods (2025 BTC: Aggr +0.163 Sharpe vs Cons −0.775). Exp 26 confirmed the temporal complementarity (ETH-Cons wins early, BTC-Aggr wins late) but dynamic Sharpe-weighting was destructive. A smarter switching signal (e.g., trailing 60d return direction, not trailing Sharpe) might work but is speculative — regime detection accuracy is hard to validate. No engine changes needed.
 
 - **Experiment 30: Portfolio Rebalancing Frequency** — *(Opened by Exp 26.)* The optimal 40/60 ETH-Cons/BTC-Aggr allocation uses static weights over 5 years. Test monthly, quarterly, and annual rebalancing (reset weights to target) to see whether drift from target allocation significantly impacts portfolio Sharpe or MaxDD. Also test if rebalancing can capture the crash-correlation spike (sell whichever asset dropped less, buy the other). No engine changes needed — apply rebalancing logic externally to equity curves.
+
+---
+
+## Addendum — 2026-03-13 Rerun After Roll Accounting Fix
+
+The `OPTION_ROLLED` accounting bug for non-unit contract sizes was fixed on 2026-03-13 and the affected sizing-era experiments were rerun: Exps 21, 22, 23, 24, 25, 26, and 27.
+
+### What Changed
+
+- The bug only affected runs where `rollPut` and non-unit sizing occurred together, so the impact is concentrated on the sized Conservative strategy.
+- Earlier one-contract / non-sized conclusions remain unchanged in direction.
+- The previous "deployment-ready" conclusion for both sized presets is no longer supported as written.
+
+### Corrected Rerun Highlights
+
+- **Exp 21:** Conservative `VS-40/45` reran at mean Sharpe `0.786` vs baseline `0.846`, mean MaxDD `22.5%`, worst-window MaxDD `71.7%`. Active `VS-40/45` remained broadly intact at mean Sharpe `0.601`, worst-window MaxDD `38.0%`.
+- **Exp 22:** No Conservative cold-start configuration met both targets of `Max MaxDD < 45%` and `Sharpe >= 90%` of baseline. Example: `VS+CS-50/45` reran at mean Sharpe `0.620`, max MaxDD `43.9%`.
+- **Exp 23:** Conservative sized reran to mean Sharpe `0.620`, rolling max MaxDD `43.9%`, full-period Sharpe `0.439`, full-period MaxDD `38.6%`. Active sized reran to mean Sharpe `0.601`, rolling max MaxDD `38.0%`, full-period Sharpe `0.365`, full-period MaxDD `30.2%`.
+- **Exp 24:** BTC Conservative sized reran weaker than previously reported: full-period Sharpe `0.060`, max MaxDD `35.9%`, rolling mean Sharpe `0.766`. BTC Aggressive sized remained strong: rolling mean Sharpe `1.043`, max MaxDD `32.7%`.
+- **Exp 25:** SOL remains underpowered and non-decisive. Rerun stayed negative in the 2022 bear slice: Conservative `-1.869` Sharpe / `31.9%` MaxDD, Aggressive `-2.708` / `61.6%`.
+- **Exp 26:** Cross-asset diversification still helps somewhat, but with lower absolute strength. Best full-period portfolio reran as inverse-vol `ETH-Conservative + BTC-Aggressive` at Sharpe `0.630`, MaxDD `27.6%`.
+- **Exp 27:** Cost sensitivity conclusions remain directionally intact: rolling-window mean Sharpe stayed positive across tested frictions. At the baseline `5% / $0.50`, ETH Conservative sized reran at full-period Sharpe `0.439` and rolling mean Sharpe `0.620`.
+
+### Revised Conclusion
+
+- **Active sized remains viable** on the research's original deployment criteria.
+- **Conservative sized no longer supports the prior "pure improvement" claim.**
+- **The statement "both strategies now achieve max MaxDD < 40%" is no longer generally true** under the corrected reruns.
+- The research record above should therefore be read as historical narrative; the corrected sizing-era numbers in this addendum are authoritative unless and until the per-experiment analysis files are updated.

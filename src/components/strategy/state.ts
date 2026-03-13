@@ -92,15 +92,19 @@ export function applyEvents(state: PortfolioState, events: Event[]): PortfolioSt
       case "OPTION_ROLLED":
         s.totalPremiumCollected += e.newPremium;
         s.realizedPL += e.newPremium - e.rollCost - e.fees;
-        s.openOption = {
-          type: e.optionType,
-          strike: e.newStrike,
-          delta: e.newDelta,
-          premium: e.newPremium,
-          openDay: e.openDay,
-          expiryDay: e.expiryDay,
-          contracts: e.contracts,
-        };
+        {
+          const contracts = e.contracts ?? 1;
+          const premiumPerContract = e.premiumPerContract ?? e.newPremium / contracts;
+          s.openOption = {
+            type: e.optionType,
+            strike: e.newStrike,
+            delta: e.newDelta,
+            premium: premiumPerContract,
+            openDay: e.openDay,
+            expiryDay: e.expiryDay,
+            contracts: e.contracts,
+          };
+        }
         if (e.optionType === "put") s.totalPutRolls++;
         break;
     }
