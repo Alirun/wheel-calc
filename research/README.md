@@ -521,20 +521,37 @@ Sweep scripts should use **multi-threaded execution** (e.g., Node.js `worker_thr
 - **Conclusion:** **Framework validated for BTC deployment.** No engine or preset changes needed — same params generalize across assets. Strategy selection is asset-dependent: Conservative for ETH, either for BTC (statistically tied). BTC is a more favorable environment for premium selling (higher VRP, lower IV, lower MaxDD).
 - **Action Taken:** Full analysis in `research/sweep24/SWEEP24_ANALYSIS.md`. BTC data cached in `research/sweep24/data/`. No code changes.
 
+### Experiment 25: Additional Asset Validation (SOL)
+- **Goal:** Extend multi-asset validation to SOL before portfolio analysis (Exp 26). Test whether SOL's IV dynamics match OU model assumptions and whether strategy performance generalizes to a third asset.
+- **Data Source:** SOL DVOL (206 records, 2022-05-04 → 2022-11-25, **discontinued**) + SOL_USDC-PERPETUAL (1,460 records, 2022-03-15 → 2026-03-13). ETH/BTC data from Exp 24 cache for cross-asset comparison.
+- **Approach:** Adapted Exp 24 approach for limited data. (1) IV dynamics analysis on 206-day SOL DVOL with cross-asset comparison for same period. (2) Limited historical backtest (206 days, bear-only). (3) Long-term price dynamics analysis using SOL_USDC-PERPETUAL RV (1,460 days). Rolling window backtest impossible (206 < 365d minimum).
+- **Results:**
+  - **Critical Data Limitation:** SOL DVOL discontinued after Nov 2022 — only 206 daily records exist. Covers exclusively the May–Nov 2022 bear market (Terra/Luna, 3AC, FTX). No multi-regime data available.
+  - **IV Dynamics (206d):** SOL κ=19.73 (outside OU range 2–10), but same-period ETH κ=49.2, BTC κ=48.5 — crash period distorts κ for all assets. SOL ACF(1)=0.942, sq ΔIV ACF(1)=0.199 (less ARCH than ETH/BTC). VRP=5.50% (marginal — above Active 5% floor, below Conservative 10% floor).
+  - **Backtest (206d bear):** All strategies negative (expected, SOL −84.5% drawdown). SOL Conservative: Sharpe −1.869, MaxDD 31.9% (below 40% target — sizing works). SOL Aggressive: Sharpe −2.708, MaxDD 61.6%. Conservative skip rate 98.9% (1 put in 7mo).
+  - **Price Dynamics (1,460d RV):** SOL ann RV 98.5% (ETH 79.2%, BTC 61.1%). RV declining year-over-year: 123.6% (2022) → 82.4% (2026). RV persistence similar across assets (ACF ≈ 0.98).
+- **Key Findings:**
+  1. **SOL DVOL is discontinued — proper validation impossible.** Only 206 days of IV data exist, all from a single bear regime. Cannot estimate reliable κ, cannot run rolling windows, cannot assess cross-regime performance.
+  2. **SOL IV dynamics are not clearly OU-incompatible.** The high κ=19.73 is a crash-period artifact (ETH/BTC also anomalous). SOL has less ARCH clustering and more IV persistence than ETH/BTC in the same window.
+  3. **Position sizing controls work on SOL.** Conservative MaxDD 31.9% during an 84.5% crash — cold-start cap and vol-scaling contained drawdown below the 40% target.
+  4. **SOL is ~25% more volatile than ETH, ~60% more than BTC** (RV 91% vs 73% vs 55%). At upper end of framework range but within Active viability (≤100% per Exp 15).
+  5. **SOL VRP is marginal (5.5%).** High uncertainty due to small sample and period bias.
+  6. **SOL cannot be included in Exp 26 (portfolio analysis).** No multi-year DVOL data for reliable historical backtest.
+- **Conclusion:** **Validation blocked by insufficient data.** SOL DVOL was discontinued after 206 days. Limited evidence suggests SOL IV may be OU-compatible and sizing controls are effective, but no confident conclusions possible from a single 7-month bear window. Exp 26 scope narrowed to ETH + BTC only.
+- **Action Taken:** Full analysis in `research/sweep25/SWEEP25_ANALYSIS.md`. SOL data cached in `research/sweep25/data/`. No code changes. No preset changes.
+
 ---
 
 <!-- NOTE: Keep this section at the end of the file. New experiments append above this section; new follow-up ideas append to the list below. -->
 ## Recommended Next Experiments
 
-*Research status after 24 experiments: Both Conservative and Aggressive ship with position sizing (VS-40/45). Conservative includes cold-start cap (CS-50/45). Both achieve max MaxDD < 40% with positive Sharpe on 5yr historical ETH and BTC data. Moderate removed (non-viable). Framework validated for multi-asset deployment (BTC + ETH). Strategy ranking is asset-dependent: Conservative dominates ETH, tied with Aggressive on BTC. All `improvements-for-later.md` items closed — none warrant further research (see file for rationale).*
+*Research status after 25 experiments: Both Conservative and Aggressive ship with position sizing (VS-40/45). Conservative includes cold-start cap (CS-50/45). Both achieve max MaxDD < 40% with positive Sharpe on 5yr historical ETH and BTC data. Moderate removed (non-viable). Framework validated for multi-asset deployment (BTC + ETH). SOL validation blocked — DVOL discontinued after 206 days (Nov 2022); insufficient for reliable assessment. Strategy ranking is asset-dependent: Conservative dominates ETH, tied with Aggressive on BTC. All `improvements-for-later.md` items closed — none warrant further research (see file for rationale).*
 
 ### Medium — Deployment refinement
 
-- **Experiment 25: Additional Asset Validation (SOL)** — Extend multi-asset validation to SOL before portfolio analysis so Exp 26 can test 3-asset portfolios. Deribit lists SOL options with DVOL. SOL has higher baseline vol, lower liquidity, and different market microstructure than BTC/ETH. Key question: does the framework generalize to a third asset, or do SOL-specific dynamics (higher vol, thinner books) break the OU model assumptions? Same approach as Exp 24 (IV dynamics + backtest + rolling window). Requires SOL DVOL + SOL-PERPETUAL data acquisition.
+- **Experiment 26: Cross-Asset Portfolio Analysis** — Run Conservative + Aggressive on ETH and BTC simultaneously and measure portfolio-level Sharpe, MaxDD, and diversification benefit. SOL excluded (DVOL discontinued — see Exp 25). Exps 24 showed different strategy rankings per asset and different win-window patterns. Key questions: what is the correlation between asset wheel returns? Does combining assets reduce portfolio MaxDD below individual-asset levels? What allocation (equal weight vs vol-weighted) maximizes portfolio Sharpe? No engine changes needed — run existing backtests on both assets, combine equity curves externally.
 
-- **Experiment 26: Cross-Asset Portfolio Analysis** — Run Conservative + Aggressive on BTC, ETH, and SOL (if validated in Exp 25) simultaneously and measure portfolio-level Sharpe, MaxDD, and diversification benefit. Exps 24–25 showed different strategy rankings per asset and different win-window patterns. Key questions: what is the correlation between asset wheel returns? Does combining assets reduce portfolio MaxDD below individual-asset levels? What allocation (equal weight vs vol-weighted) maximizes portfolio Sharpe? No engine changes needed — run existing backtests on all assets, combine equity curves externally.
-
-- **Experiment 27: Sized Strategy Cost Sensitivity on Real Data** — Re-run Exp 13's cost sweep (bid-ask spread, per-trade fee) on the final sized configurations (Conservative VS+CS, Aggressive VS) against historical data for ETH, BTC, and SOL. Exp 13 answered the core question using MC with unsized strategies (Sharpe ≥ 0.39 even at 12% spread / $2.00 fee), so the risk is low. Value: confirm break-even friction levels for the specific preset configs that ship, on all assets. No engine changes needed — parameter sweep only.
+- **Experiment 27: Sized Strategy Cost Sensitivity on Real Data** — Re-run Exp 13's cost sweep (bid-ask spread, per-trade fee) on the final sized configurations (Conservative VS+CS, Aggressive VS) against historical data for ETH and BTC. Exp 13 answered the core question using MC with unsized strategies (Sharpe ≥ 0.39 even at 12% spread / $2.00 fee), so the risk is low. Value: confirm break-even friction levels for the specific preset configs that ship, on both assets. No engine changes needed — parameter sweep only.
 
 ### Low — Nice to have
 
